@@ -74,11 +74,19 @@ class MockSmartBucket {
 class MockKVCache {
   private cache = new Map<string, any>();
 
-  async get(key: string) {
-    return this.cache.get(key) || null;
+  async get(key: string, options?: { type?: 'text' | 'json' | 'arrayBuffer' | 'stream' }) {
+    const value = this.cache.get(key) || null;
+    if (!value) return null;
+
+    // Handle different return types
+    if (options?.type === 'json') {
+      return typeof value === 'string' ? JSON.parse(value) : value;
+    }
+    return value;
   }
 
-  async put(key: string, value: any) {
+  async put(key: string, value: any, options?: { expirationTtl?: number }) {
+    // Ignore TTL in mock - would need setTimeout to handle properly
     this.cache.set(key, value);
   }
 
