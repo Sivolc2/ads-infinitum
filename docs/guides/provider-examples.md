@@ -361,8 +361,111 @@ Daft → High-throughput analytics + parallel prompt engineering on your experim
 
 MCPTotal → The glue layer that hosts your MCP servers (Raindrop, Daft, others) and presents them as a single secure tool surface to your agent/chat interface.
 
+6️⃣ Fastino – GLiNER-2 for Entity Extraction & Classification
+
+Fastino provides a powerful GLiNER-2 API for zero-shot entity extraction, text classification, and structured JSON extraction – perfect for analyzing user feedback and marketing intent.
+[Fastino](https://fastino.ai)
+
+Minimal Fastino client (Node/TS):
+
+```typescript
+// lib/fastino.ts
+const FASTINO_API_KEY = process.env.FASTINO_API_KEY!;
+
+export type FastinoTask = "extract_entities" | "classify_text" | "extract_json";
+
+export interface FastinoResponse<T = any> {
+  result: T;
+}
+
+async function fastinoRequest<T = any>(body: any): Promise<FastinoResponse<T>> {
+  const res = await fetch("https://api.fastino.ai/gliner-2", {
+    method: "POST",
+    headers: {
+      "x-api-key": FASTINO_API_KEY,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Fastino error: ${res.status} – ${await res.text()}`);
+  }
+
+  return res.json() as Promise<FastinoResponse<T>>;
+}
+```
+
+**A. Classify user message for marketing intent:**
+
+```typescript
+// Classify text as interest level for your product lab
+export async function classifyInterest(message: string) {
+  const body = {
+    task: "classify_text" as FastinoTask,
+    text: message,
+    schema: {
+      categories: ["high_interest", "curious", "uninterested", "complaint"],
+    },
+    threshold: 0.5, // optional, default ~0.5
+  };
+
+  const res = await fastinoRequest<{ categories: string }>(body);
+  return res.result.categories; // e.g. "high_interest"
+}
+```
+
+**B. Extract structured fields from noisy feedback:**
+
+```typescript
+// Extract product + sentiment info from freeform text
+export async function extractFeedbackFields(text: string) {
+  const body = {
+    task: "extract_json" as FastinoTask,
+    text,
+    schema: {
+      feedback: [
+        "product::str::Product name or type",
+        "sentiment::str::User sentiment (happy, frustrated, confused, excited)",
+        "feature_request::str::Requested feature or improvement"
+      ]
+    },
+    threshold: 0.4
+  };
+
+  const res = await fastinoRequest<{
+    feedback: Array<{
+      product: string;
+      sentiment: string;
+      feature_request: string
+    }>
+  }>(body);
+  return res.result.feedback;
+}
+```
+
+**Usage in your ad feedback loop:**
+
+```typescript
+// Analyze incoming user feedback from ads or Kickstarter
+const feedback = await extractFeedbackFields(
+  "I love the SolarPanel X3 idea! Would be amazing if it had built-in battery storage though."
+);
+// → [{ product: "SolarPanel X3", sentiment: "excited", feature_request: "built-in battery storage" }]
+
+// Then classify new leads by interest level
+const interest = await classifyInterest(
+  "This looks interesting, tell me more about pricing"
+);
+// → "curious"
+```
+
+Use Fastino to process and categorize ad responses, user feedback, or Kickstarter comments into structured data that feeds back into your Raindrop SmartMemory and ad optimization pipeline.
+
+---
+
 If you want, I can next:
 
-Sketch a single “orchestrator” agent loop that calls Raindrop → Daft → Freepik in sequence, and
+Sketch a single "orchestrator" agent loop that calls Raindrop → Daft → Freepik in sequence, and
 
-Propose a minimal data schema tying “ad variants → user cohorts → feasible hardware SKUs”.
+Propose a minimal data schema tying "ad variants → user cohorts → feasible hardware SKUs".
