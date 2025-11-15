@@ -210,9 +210,84 @@ const [img] = await generateCampaignImage(
 // img.base64 → <draw onto <img src={`data:image/png;base64,${img.base64}`}>>
 
 
-Re: Midjourney – MJ is still Discord/bot-based, not a public HTTP API, so practical hackathon move is: use Freepik (or OpenAI Images) programmatically, then if you really want MJ you keep that as a manual “nice to have” via Discord.
+Re: Midjourney – MJ is still Discord/bot-based, not a public HTTP API, so practical hackathon move is: use Freepik (or OpenAI Images) programmatically, then if you really want MJ you keep that as a manual "nice to have" via Discord.
 
-4️⃣ MCPTotal – Wiring Your MCP Servers Together
+4️⃣ fal.ai – Fast FLUX.1 Image Generation for Ad Creatives
+
+fal.ai provides blazing-fast access to FLUX.1, a state-of-the-art text-to-image model perfect for generating modern, high-quality ad creatives.
+[fal.ai](https://fal.ai)
++1
+
+Basic Node/TypeScript helper for generating campaign creatives:
+
+```typescript
+// src/lib/fal.ts
+import { fal } from "@fal-ai/client";
+
+export type FalImage = {
+  url: string;
+  content_type: string;
+  width: number;
+  height: number;
+};
+
+export async function generateFalAdImages(options: {
+  productName: string;
+  audience: string;
+  angle: string;          // e.g. "anxiety relief", "productivity", "aesthetic desk setup"
+  numImages?: number;
+}): Promise<FalImage[]> {
+  const { productName, audience, angle, numImages = 2 } = options;
+
+  const prompt = [
+    `Kickstarter / paid social hero image for a new product called "${productName}".`,
+    `Target audience: ${audience}.`,
+    `Positioning angle: ${angle}.`,
+    `Clean, eye-catching composition, no heavy text, looks great in a mobile feed.`,
+  ].join(" ");
+
+  const result = await fal.subscribe("fal-ai/flux/dev", {
+    input: {
+      prompt,
+      image_size: "landscape_4_3",  // 1024x768
+      num_images: numImages,
+      guidance_scale: 3.5,
+      enable_safety_checker: true,
+      output_format: "jpeg",
+    },
+    logs: false,
+  });
+
+  // result.data.images is the standard output schema for this model
+  return (result.data as any).images as FalImage[];
+}
+```
+
+Usage inside your ad flow:
+
+```typescript
+const images = await generateFalAdImages({
+  productName: "SolarPanel X3",
+  audience: "eco-conscious tech enthusiasts",
+  angle: "sustainable productivity for remote work",
+  numImages: 2
+});
+
+// Direct image URLs, no base64 decoding needed
+images.forEach((img, i) => {
+  console.log(`<img src="${img.url}" alt="variant ${i + 1}" />`);
+});
+```
+
+**Why fal.ai vs Freepik:**
+- **Speed**: FLUX.1 inference in <10 seconds, optimized infrastructure
+- **Quality**: Modern, realistic imagery that looks great on social feeds
+- **URLs**: Direct CDN-hosted image URLs (no base64 encoding)
+- **Variants**: Perfect for A/B testing with multiple creative variations
+
+Use fal when you need rapid creative generation for paid social campaigns, Kickstarter hero images, or multi-variant ad testing.
+
+5️⃣ MCPTotal – Wiring Your MCP Servers Together
 
 MCPTotal is essentially infrastructure for MCP: a hub + gateway that hosts MCP servers securely and exposes them to your MCP client (Claude Desktop, Claude Code, etc.). 
 CSO Online
@@ -266,7 +341,7 @@ Daft MCP server (if you or someone spins one up): for analytics and context engi
 
 MCPTotal Hub: hosts both, gives you one secure gateway URL to plug into your agent.
 
-5️⃣ Daft – Massively Parallel Context / Prompt Engineering
+6️⃣ Daft – Massively Parallel Context / Prompt Engineering
 
 Daft is a data engine with native AI functions (embeddings, generation, prompt) and a new prompt function specifically designed for massively parallel prompt engineering and synthetic data generation. 
 Daft
@@ -351,17 +426,19 @@ Use Daft later in the loop to analyze hardware lab feasibility vs. interest (e.g
 
 How They Fit Your Self-Evolving Stack
 
-Lovable → “Kickstarter-style” public site / landing page generator for each new concept.
+Lovable → "Kickstarter-style" public site / landing page generator for each new concept.
 
 Raindrop → Agentic backend: SmartMemory + AI models + HTTP service for ad optimization and tying into MCP.
 
 Freepik → On-demand campaign creatives (hero images, social ads) via simple REST.
 
+fal.ai → Fast, modern ad creative generation with FLUX.1 for A/B testing and rapid prototyping.
+
 Daft → High-throughput analytics + parallel prompt engineering on your experiment data.
 
 MCPTotal → The glue layer that hosts your MCP servers (Raindrop, Daft, others) and presents them as a single secure tool surface to your agent/chat interface.
 
-6️⃣ Fastino – GLiNER-2 for Entity Extraction & Classification
+7️⃣ Fastino – GLiNER-2 for Entity Extraction & Classification
 
 Fastino provides a powerful GLiNER-2 API for zero-shot entity extraction, text classification, and structured JSON extraction – perfect for analyzing user feedback and marketing intent.
 [Fastino](https://fastino.ai)

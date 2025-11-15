@@ -1,0 +1,21 @@
+{
+  "name": "freelancer-example",
+  "version": "1.0.0",
+  "description": "Freelancer.com API example for posting and monitoring jobs",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/example.js",
+    "dev": "tsx src/example.ts",
+    "search": "tsx src/search-example.ts",
+    "post": "tsx src/post-job-example.ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.16",
+    "tsx": "^4.7.1",
+    "typescript": "^5.3.3"
+  }
+}
