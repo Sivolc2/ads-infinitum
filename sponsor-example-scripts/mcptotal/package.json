@@ -1,0 +1,22 @@
+{
+  "name": "ads-infinitum-mcptotal-example",
+  "version": "1.0.0",
+  "description": "MCPTotal integration example for Ads Infinitum",
+  "main": "custom-client-example.ts",
+  "scripts": {
+    "start": "tsx custom-client-example.ts",
+    "build": "tsc",
+    "dev": "tsx watch custom-client-example.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

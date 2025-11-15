@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "description": "MCPTotal configuration for Ads Infinitum hackathon project",
+  "clients": {
+    "ads-infinitum-agent": {
+      "servers": {
+        "raindrop": {
+          "url": "https://<your-space>.mcptotal.io/servers/raindrop",
+          "token": "${MCPTOTAL_API_TOKEN}",
+          "description": "Raindrop MCP server for SmartMemory and AI model access"
+        },
+        "daft-marketing": {
+          "url": "https://<your-space>.mcptotal.io/servers/daft-marketing",
+          "token": "${MCPTOTAL_API_TOKEN}",
+          "description": "Daft MCP server for parallel analytics and prompt engineering"
+        },
+        "filesystem": {
+          "url": "https://<your-space>.mcptotal.io/servers/filesystem",
+          "token": "${MCPTOTAL_API_TOKEN}",
+          "description": "Filesystem MCP for reading campaign data and configs"
+        },
+        "freepik": {
+          "url": "https://<your-space>.mcptotal.io/servers/freepik",
+          "token": "${MCPTOTAL_API_TOKEN}",
+          "description": "Custom Freepik MCP wrapper for image generation"
+        }
+      },
+      "settings": {
+        "timeout": 30000,
+        "retries": 3,
+        "logLevel": "info"
+      }
+    }
+  },
+  "gateway": {
+    "baseUrl": "https://<your-space>.mcptotal.io",
+    "apiToken": "${MCPTOTAL_API_TOKEN}"
+  }
+}

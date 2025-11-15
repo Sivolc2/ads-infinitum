@@ -1,0 +1,19 @@
+{
+  "name": "freepik-example",
+  "version": "1.0.0",
+  "description": "Freepik text-to-image API example for campaign creative generation",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/example.js",
+    "dev": "tsx src/example.ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.16",
+    "tsx": "^4.7.1",
+    "typescript": "^5.3.3"
+  }
+}

@@ -1,0 +1,5 @@
+application "ad-optimizer" {
+  service "ad-api" {
+    visibility = "public"
+  }
+}

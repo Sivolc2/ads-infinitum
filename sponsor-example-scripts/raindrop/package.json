@@ -1,0 +1,22 @@
+{
+  "name": "raindrop-ad-optimizer",
+  "version": "1.0.0",
+  "description": "Raindrop service for optimizing ad copy using AI",
+  "type": "module",
+  "main": "src/services/ad-api.ts",
+  "scripts": {
+    "dev": "raindrop dev",
+    "build": "raindrop build",
+    "deploy": "raindrop deploy"
+  },
+  "dependencies": {
+    "@liquidmetal-ai/raindrop-framework": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
