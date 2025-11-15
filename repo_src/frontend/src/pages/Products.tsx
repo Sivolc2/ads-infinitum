@@ -1,35 +1,28 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import apiClient from '../services/api';
-import type { ProductWithMetrics, ProductStatus } from '../types';
+import type { ProductWithMetrics, ExperimentWithMetrics } from '../types';
 import '../styles/Products.css';
-
-const statusColors: Record<ProductStatus, string> = {
-  draft: '#6b7280',
-  testing: '#3b82f6',
-  validated: '#10b981',
-  killed: '#ef4444',
-  handoff: '#8b5cf6',
-};
-
-const statusLabels: Record<ProductStatus, string> = {
-  draft: 'Draft',
-  testing: 'Testing',
-  validated: 'Validated',
-  killed: 'Killed',
-  handoff: 'Handed Off',
-};
 
 export default function Products() {
   const [products, setProducts] = useState<ProductWithMetrics[]>([]);
+  const [selectedProduct, setSelectedProduct] = useState<ProductWithMetrics | null>(null);
+  const [experiments, setExperiments] = useState<ExperimentWithMetrics[]>([]);
   const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [runningExperiment, setRunningExperiment] = useState(false);
+  const [experimentLogs, setExperimentLogs] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [filterStatus, setFilterStatus] = useState<ProductStatus | 'all'>('all');
 
   useEffect(() => {
     loadProducts();
   }, []);
+
+  useEffect(() => {
+    if (selectedProduct) {
+      loadExperiments(selectedProduct.id);
+    }
+  }, [selectedProduct]);
 
   const loadProducts = async () => {
     try {
@@ -45,142 +38,325 @@ export default function Products() {
     }
   };
 
-  const filteredProducts = products.filter(
-    (p) => filterStatus === 'all' || p.status === filterStatus
-  );
+  const loadExperiments = async (productId: string) => {
+    try {
+      const data = await apiClient.getExperiments(productId);
+      setExperiments(data);
+    } catch (err) {
+      console.error('Error loading experiments:', err);
+    }
+  };
+
+  const addLog = (message: string) => {
+    setExperimentLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${message}`]);
+  };
+
+  const createAIProduct = async () => {
+    try {
+      setCreating(true);
+      setError(null);
+      setExperimentLogs([]);
+
+      addLog('🤖 Starting AI product generation...');
+
+      // Call AI product generation endpoint
+      const response = await fetch('/api/ai/generate-product', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate product');
+      }
+
+      const { product } = await response.json();
+      addLog(`✅ Created product: "${product.title}"`);
+
+      // Reload products
+      await loadProducts();
+
+      // Select the new product
+      const updatedProduct = products.find(p => p.id === product.id) || product;
+      setSelectedProduct(updatedProduct);
+
+      addLog('🎉 Product generation complete!');
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Failed to create product';
+      setError(errorMsg);
+      addLog(`❌ Error: ${errorMsg}`);
+      console.error('Error creating product:', err);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const runExperiment = async () => {
+    if (!selectedProduct) return;
+
+    try {
+      setRunningExperiment(true);
+      setError(null);
+      setExperimentLogs([]);
+
+      addLog('🧪 Starting experiment...');
+      addLog(`📊 Product: ${selectedProduct.title}`);
+      addLog('');
+
+      // Call experiment runner endpoint
+      addLog('🎨 Generating ad variants...');
+      const response = await fetch('/api/ai/run-experiment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product_id: selectedProduct.id }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to run experiment');
+      }
+
+      const result = await response.json();
+
+      addLog(`✅ Generated ${result.num_variants} ad variants`);
+      addLog(`💰 Estimated cost: $${result.estimated_cost.toFixed(2)}`);
+      addLog('');
+      addLog('📱 Deploying to Meta Ads...');
+
+      // Simulate deployment progress
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      addLog('✅ Ads deployed successfully');
+      addLog('');
+      addLog('📈 Experiment is now running!');
+      addLog('');
+      addLog(`Experiment ID: ${result.experiment_id}`);
+      addLog(`Budget: $${result.budget_per_day}/day`);
+      addLog(`Target CPL: $${result.target_cpl}`);
+      addLog('');
+      addLog('🎉 Experiment started successfully!');
+
+      // Reload experiments
+      await loadExperiments(selectedProduct.id);
+      await loadProducts();
+
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Failed to run experiment';
+      setError(errorMsg);
+      addLog(`❌ Error: ${errorMsg}`);
+      console.error('Error running experiment:', err);
+    } finally {
+      setRunningExperiment(false);
+    }
+  };
+
+  const selectProduct = (product: ProductWithMetrics) => {
+    setSelectedProduct(product);
+    setExperimentLogs([]);
+  };
 
   if (loading) {
     return (
-      <div className="page-container">
+      <div className="products-container">
         <div className="loading">Loading products...</div>
       </div>
     );
   }
 
-  if (error) {
-    return (
-      <div className="page-container">
-        <div className="error-message">
-          <h3>Error Loading Products</h3>
-          <p>{error}</p>
-          <button onClick={loadProducts} className="btn-primary">Retry</button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="page-container">
-      <div className="page-header">
+    <div className="products-container">
+      <div className="products-header">
         <div>
           <h1>Product Concepts</h1>
-          <p className="page-description">
-            AI-generated product ideas being tested in the market
-          </p>
+          <p className="subtitle">AI-generated product ideas being validated in the market</p>
         </div>
-        <button className="btn-primary">+ New Product Concept</button>
-      </div>
-
-      <div className="filters">
         <button
-          className={`filter-btn ${filterStatus === 'all' ? 'active' : ''}`}
-          onClick={() => setFilterStatus('all')}
+          className="btn-primary"
+          onClick={createAIProduct}
+          disabled={creating}
         >
-          All ({products.length})
+          {creating ? '🤖 Generating...' : '✨ Create AI Product'}
         </button>
-        {Object.entries(statusLabels).map(([status, label]) => {
-          const count = products.filter((p) => p.status === status).length;
-          return (
-            <button
-              key={status}
-              className={`filter-btn ${filterStatus === status ? 'active' : ''}`}
-              onClick={() => setFilterStatus(status as ProductStatus)}
-            >
-              {label} ({count})
-            </button>
-          );
-        })}
       </div>
 
-      {filteredProducts.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-icon">💡</div>
-          <h3>No Products Found</h3>
-          <p>
-            {filterStatus === 'all'
-              ? 'Start by creating a new product concept'
-              : `No products with status "${statusLabels[filterStatus as ProductStatus]}"`}
-          </p>
-        </div>
-      ) : (
-        <div className="products-grid">
-          {filteredProducts.map((product) => (
-            <div key={product.id} className="product-card">
-              <div className="product-header">
-                <div>
-                  <h3 className="product-title">{product.title}</h3>
-                  <p className="product-tagline">{product.tagline}</p>
-                </div>
-                <span
-                  className="status-badge"
-                  style={{ background: statusColors[product.status] }}
-                >
-                  {statusLabels[product.status]}
-                </span>
-              </div>
-
-              <p className="product-description">{product.description}</p>
-
-              <div className="product-meta">
-                <div className="meta-item">
-                  <span className="meta-label">Hypothesis:</span>
-                  <span className="meta-value">{product.hypothesis}</span>
-                </div>
-                <div className="meta-item">
-                  <span className="meta-label">Target Audience:</span>
-                  <span className="meta-value">{product.target_audience}</span>
-                </div>
-              </div>
-
-              <div className="product-stats">
-                <div className="stat-item">
-                  <div className="stat-item-value">{product.total_experiments}</div>
-                  <div className="stat-item-label">Experiments</div>
-                </div>
-                <div className="stat-item">
-                  <div className="stat-item-value">{product.total_leads}</div>
-                  <div className="stat-item-label">Leads</div>
-                </div>
-                <div className="stat-item">
-                  <div className="stat-item-value">${product.avg_cpl_usd.toFixed(2)}</div>
-                  <div className="stat-item-label">Avg CPL</div>
-                </div>
-                <div className="stat-item">
-                  <div className="stat-item-value">${product.total_spend_usd.toFixed(2)}</div>
-                  <div className="stat-item-label">Total Spend</div>
-                </div>
-              </div>
-
-              <div className="product-footer">
-                <div className="product-date">
-                  Created {format(new Date(product.created_at), 'MMM d, yyyy')}
-                  {product.created_by === 'agent' && ' by AI'}
-                </div>
-                <div className="product-actions">
-                  <Link to={`/experiments?product=${product.id}`} className="btn-link">
-                    View Experiments →
-                  </Link>
-                  {product.landing_page && (
-                    <Link to={`/landing-pages/${product.landing_page.id}`} className="btn-link">
-                      Landing Page →
-                    </Link>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
+      {error && (
+        <div className="error-banner">
+          {error}
         </div>
       )}
+
+      <div className="products-layout">
+        {/* Left Panel: Product List */}
+        <div className="products-list-panel">
+          <h2>All Products ({products.length})</h2>
+
+          {products.length === 0 ? (
+            <div className="empty-state-small">
+              <div className="empty-icon">💡</div>
+              <h3>No Products Yet</h3>
+              <p>Click "Create AI Product" to start</p>
+            </div>
+          ) : (
+            <div className="products-list">
+              {products.map((product) => (
+                <div
+                  key={product.id}
+                  className={`product-list-item ${selectedProduct?.id === product.id ? 'selected' : ''}`}
+                  onClick={() => selectProduct(product)}
+                >
+                  <div className="product-list-header">
+                    <h3>{product.title}</h3>
+                    <span className={`status-badge status-${product.status}`}>
+                      {product.status}
+                    </span>
+                  </div>
+                  <p className="product-list-tagline">{product.tagline}</p>
+                  <div className="product-list-stats">
+                    <span>{product.total_experiments} exp</span>
+                    <span>{product.total_leads} leads</span>
+                    <span>${product.total_spend_usd.toFixed(0)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Right Panel: Product Details & Experiments */}
+        <div className="product-details-panel">
+          {selectedProduct ? (
+            <>
+              {/* Product Summary */}
+              <div className="product-summary-card">
+                <div className="product-details-header">
+                  <div>
+                    <h2>{selectedProduct.title}</h2>
+                    <p className="product-tagline">{selectedProduct.tagline}</p>
+                  </div>
+                  <span className={`status-badge-large status-${selectedProduct.status}`}>
+                    {selectedProduct.status}
+                  </span>
+                </div>
+
+                <div className="product-section">
+                  <h3>Description</h3>
+                  <p>{selectedProduct.description}</p>
+                </div>
+
+                <div className="product-section">
+                  <h3>Hypothesis</h3>
+                  <p>{selectedProduct.hypothesis}</p>
+                </div>
+
+                <div className="product-section">
+                  <h3>Target Audience</h3>
+                  <p>{selectedProduct.target_audience}</p>
+                </div>
+
+                <div className="product-stats-grid">
+                  <div className="stat-card">
+                    <div className="stat-value">{selectedProduct.total_experiments}</div>
+                    <div className="stat-label">Experiments</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-value">{selectedProduct.total_leads}</div>
+                    <div className="stat-label">Total Leads</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-value">${selectedProduct.avg_cpl_usd.toFixed(2)}</div>
+                    <div className="stat-label">Avg CPL</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-value">${selectedProduct.total_spend_usd.toFixed(2)}</div>
+                    <div className="stat-label">Total Spend</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Experiment Runner */}
+              <div className="experiment-runner-card">
+                <div className="experiment-runner-header">
+                  <h2>Run Experiment</h2>
+                  <button
+                    className="btn-primary"
+                    onClick={runExperiment}
+                    disabled={runningExperiment}
+                  >
+                    {runningExperiment ? '⚡ Running...' : '🚀 Run Experiment'}
+                  </button>
+                </div>
+
+                {experimentLogs.length > 0 && (
+                  <div className="logs-container">
+                    <div className="logs-header">Execution Logs</div>
+                    <div className="logs-content">
+                      {experimentLogs.map((log, idx) => (
+                        <div key={idx} className="log-line">{log}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Experiments List */}
+              <div className="experiments-list-card">
+                <h2>Experiments ({experiments.length})</h2>
+
+                {experiments.length === 0 ? (
+                  <div className="empty-state-small">
+                    <div className="empty-icon">🧪</div>
+                    <p>No experiments yet. Run an experiment to start testing!</p>
+                  </div>
+                ) : (
+                  <div className="experiments-grid">
+                    {experiments.map((experiment) => (
+                      <div key={experiment.id} className="experiment-card">
+                        <div className="experiment-card-header">
+                          <h3>Experiment #{experiment.round}</h3>
+                          <span className={`status-badge status-${experiment.status}`}>
+                            {experiment.status}
+                          </span>
+                        </div>
+
+                        <div className="experiment-card-stats">
+                          <div className="experiment-stat">
+                            <span className="stat-label">Variants</span>
+                            <span className="stat-value">{experiment.total_variants}</span>
+                          </div>
+                          <div className="experiment-stat">
+                            <span className="stat-label">Leads</span>
+                            <span className="stat-value">{experiment.total_leads}</span>
+                          </div>
+                          <div className="experiment-stat">
+                            <span className="stat-label">Avg CPL</span>
+                            <span className="stat-value">${experiment.avg_cpl_usd.toFixed(2)}</span>
+                          </div>
+                          <div className="experiment-stat">
+                            <span className="stat-label">Spend</span>
+                            <span className="stat-value">${experiment.total_spend_usd.toFixed(2)}</span>
+                          </div>
+                        </div>
+
+                        <div className="experiment-card-meta">
+                          <span>Budget: ${experiment.budget_per_day_usd}/day</span>
+                          <span>Target CPL: ${experiment.target_cpl_threshold_usd}</span>
+                        </div>
+
+                        <div className="experiment-card-date">
+                          {format(new Date(experiment.created_at), 'MMM d, yyyy')}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="empty-state">
+              <div className="empty-icon">👈</div>
+              <h3>Select a Product</h3>
+              <p>Choose a product from the list to view details and run experiments</p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

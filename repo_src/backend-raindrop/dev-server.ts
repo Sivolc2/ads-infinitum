@@ -47,11 +47,21 @@ class MockSmartBucket {
   private storage = new Map<string, any>();
 
   async get(key: string) {
-    return this.storage.get(key) || null;
+    const value = this.storage.get(key);
+    if (!value) return null;
+
+    // Return an object that mimics R2 object with text() method
+    return {
+      text: async () => value,
+      json: async () => JSON.parse(value),
+      arrayBuffer: async () => new TextEncoder().encode(value).buffer,
+    };
   }
 
   async put(key: string, value: any) {
-    this.storage.set(key, value);
+    // Store as string (like R2 does)
+    const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
+    this.storage.set(key, stringValue);
     return { success: true };
   }
 
@@ -60,10 +70,13 @@ class MockSmartBucket {
   }
 
   async list(options?: any) {
+    const prefix = options?.prefix || '';
+    const entries = Array.from(this.storage.entries())
+      .filter(([key]) => key.startsWith(prefix));
+
     return {
-      objects: Array.from(this.storage.entries()).map(([key, value]) => ({
+      objects: entries.map(([key]) => ({
         key,
-        value,
         uploaded: new Date(),
       })),
       truncated: false,
