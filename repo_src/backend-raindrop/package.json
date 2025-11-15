@@ -6,10 +6,9 @@
   "main": "src/api/index.ts",
   "scripts": {
     "dev": "tsx watch dev-server.ts",
-    "dev:raindrop": "raindrop dev",
     "seed": "tsx seed-data.ts",
-    "build": "raindrop build",
-    "deploy": "raindrop deploy"
+    "build": "echo 'Build not needed for dev'",
+    "deploy": "raindrop build deploy"
   },
   "dependencies": {
     "@liquidmetal-ai/raindrop-framework": "latest",

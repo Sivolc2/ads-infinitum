@@ -209,9 +209,9 @@ export default function Products() {
                   </div>
                   <p className="product-list-tagline">{product.tagline}</p>
                   <div className="product-list-stats">
-                    <span>{product.total_experiments} exp</span>
-                    <span>{product.total_leads} leads</span>
-                    <span>${product.total_spend_usd.toFixed(0)}</span>
+                    <span>{product.total_experiments || 0} exp</span>
+                    <span>{product.total_leads || 0} leads</span>
+                    <span>${(product.total_spend_usd || 0).toFixed(0)}</span>
                   </div>
                 </div>
               ))}
@@ -252,19 +252,19 @@ export default function Products() {
 
                 <div className="product-stats-grid">
                   <div className="stat-card">
-                    <div className="stat-value">{selectedProduct.total_experiments}</div>
+                    <div className="stat-value">{selectedProduct.total_experiments || 0}</div>
                     <div className="stat-label">Experiments</div>
                   </div>
                   <div className="stat-card">
-                    <div className="stat-value">{selectedProduct.total_leads}</div>
+                    <div className="stat-value">{selectedProduct.total_leads || 0}</div>
                     <div className="stat-label">Total Leads</div>
                   </div>
                   <div className="stat-card">
-                    <div className="stat-value">${selectedProduct.avg_cpl_usd.toFixed(2)}</div>
+                    <div className="stat-value">${(selectedProduct.avg_cpl_usd || 0).toFixed(2)}</div>
                     <div className="stat-label">Avg CPL</div>
                   </div>
                   <div className="stat-card">
-                    <div className="stat-value">${selectedProduct.total_spend_usd.toFixed(2)}</div>
+                    <div className="stat-value">${(selectedProduct.total_spend_usd || 0).toFixed(2)}</div>
                     <div className="stat-label">Total Spend</div>
                   </div>
                 </div>

@@ -119,6 +119,40 @@ class MockRaindropAI {
   }
 }
 
+// Seed database with sample products
+async function seedDatabase(bucket: MockSmartBucket, cache: MockKVCache) {
+  const { ProductService } = await import('./src/services/product-service.js');
+  const productService = new ProductService(bucket, cache);
+
+  const sampleProducts = [
+    {
+      title: 'Smart Plant Monitor',
+      tagline: 'Never kill a plant again',
+      description: 'An IoT device that monitors soil moisture, light levels, and temperature to keep your plants thriving. Sends alerts to your phone when your plants need attention and provides personalized care recommendations.',
+      hypothesis: 'Plant enthusiasts struggle to maintain optimal growing conditions and often forget watering schedules. This device provides real-time monitoring and actionable insights to ensure plant health.',
+      target_audience: 'Urban millennials and Gen Z plant owners, ages 25-40, who love plants but struggle with plant care',
+      status: 'draft' as const,
+      created_by: 'agent' as const,
+    },
+    {
+      title: 'Focus Flow Timer',
+      tagline: 'Pomodoro meets ambient intelligence',
+      description: 'A physical productivity timer with integrated ambient lighting and soundscapes. Uses the Pomodoro technique enhanced with binaural beats and color psychology to maximize focus and minimize distractions.',
+      hypothesis: 'Remote workers need better tools to maintain focus in home environments filled with distractions. A dedicated physical device creates psychological commitment and environmental cues that software alone cannot provide.',
+      target_audience: 'Knowledge workers, freelancers, and students ages 22-45 who work from home and struggle with focus',
+      status: 'draft' as const,
+      created_by: 'agent' as const,
+    },
+  ];
+
+  console.log('🌱 Seeding database with sample products...');
+  for (const productData of sampleProducts) {
+    const product = await productService.create(productData);
+    console.log(`   ✅ Created: ${product.title}`);
+  }
+  console.log('');
+}
+
 // Start the server
 const service = new MockService();
 const port = parseInt(process.env.PORT || '8787');
@@ -141,9 +175,13 @@ serve(
     fetch: service.fetch.bind(service),
     port,
   },
-  (info) => {
+  async (info) => {
     console.log(`✅ Server running at http://localhost:${info.port}`);
     console.log('');
+
+    // Seed database with sample products
+    await seedDatabase(service.env.AD_DATA, service.env.APP_CACHE);
+
     console.log('📚 Available endpoints:');
     console.log('   GET  /health - Health check');
     console.log('   GET  /internal/config - Configuration status');
@@ -152,6 +190,8 @@ serve(
     console.log('');
     console.log('   GET  /api/products - List products');
     console.log('   POST /api/products - Create product');
+    console.log('   POST /api/ai/generate-product - AI generate product');
+    console.log('   POST /api/ai/run-experiment - Run experiment');
     console.log('   GET  /api/experiments - List experiments');
     console.log('   GET  /api/landing/:productId - Get landing page');
     console.log('');

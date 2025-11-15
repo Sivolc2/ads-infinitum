@@ -1,0 +1,26 @@
+# Raindrop Configuration for Ad Infinitum Backend
+
+name = "ads-infinitum-backend"
+main = "src/api/index.ts"
+
+[env]
+# LLM Provider: 'raindrop' uses Raindrop AI, 'openrouter' uses OpenRouter
+LLM_PROVIDER = "raindrop"
+
+# Image Provider: 'freepik' or 'fal'
+IMAGE_PROVIDER = "freepik"
+
+# Development server port
+PORT = "8787"
+
+[[ai]]
+binding = "AI"
+
+[[smartbucket]]
+binding = "AD_DATA"
+
+[[kv]]
+binding = "APP_CACHE"
+
+[[queue]]
+binding = "LEAD_INGESTION"

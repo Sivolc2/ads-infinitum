@@ -20,6 +20,7 @@ import { MetricsCollectorService } from '../services/metrics-service';
 import { LeadIngestionService } from '../services/lead-service';
 import { LandingPageService } from '../services/landing-page-service';
 import { BuildContractService } from '../services/build-contract-service';
+import { generateProductConcept } from '../services/ai-product-generator';
 
 import {
   ProductConcept,
@@ -145,7 +146,17 @@ app.get('/api/products', async (c) => {
     const status = c.req.query('status') as any;
     const productService = new ProductService(c.env.AD_DATA, c.env.APP_CACHE);
     const products = await productService.list(status ? { status } : undefined);
-    return c.json({ success: true, count: products.length, data: products });
+
+    // Add metrics to each product (default to 0 for new products)
+    const productsWithMetrics = products.map(product => ({
+      ...product,
+      total_experiments: 0,
+      total_leads: 0,
+      avg_cpl_usd: 0,
+      total_spend_usd: 0
+    }));
+
+    return c.json({ success: true, count: productsWithMetrics.length, data: productsWithMetrics });
   } catch (error) {
     return c.json({ success: false, error: 'Failed to list products',
       message: error instanceof Error ? error.message : 'Unknown error' }, 500);
@@ -203,6 +214,68 @@ app.delete('/api/products/:id', async (c) => {
   } catch (error) {
     return c.json({ success: false, error: 'Failed to delete product',
       message: error instanceof Error ? error.message : 'Unknown error' }, 500);
+  }
+});
+
+// ===== AI PRODUCT GENERATION ENDPOINT =====
+
+app.post('/api/ai/generate-product', async (c) => {
+  try {
+    // Get configuration from environment
+    const llmProvider = c.env.LLM_PROVIDER || 'raindrop';
+    const useRaindrop = llmProvider.toLowerCase() === 'raindrop';
+    const openrouterApiKey = c.env.OPENROUTER_API_KEY;
+
+    // Check LLM provider requirements
+    if (useRaindrop && !c.env.AI) {
+      return c.json({
+        success: false,
+        error: 'Raindrop AI not available. Set LLM_PROVIDER=openrouter to use OpenRouter instead.'
+      }, 500);
+    }
+
+    if (!useRaindrop && !openrouterApiKey) {
+      return c.json({
+        success: false,
+        error: 'OPENROUTER_API_KEY must be configured when LLM_PROVIDER=openrouter'
+      }, 500);
+    }
+
+    console.log(`🤖 Generating AI product concept using ${useRaindrop ? 'Raindrop AI' : 'OpenRouter'}...`);
+
+    // Generate product concept using AI
+    const product = await generateProductConcept({
+      openrouterApiKey,
+      raindropAI: useRaindrop ? c.env.AI : undefined,
+      useRaindrop
+    });
+
+    // Save the product to storage
+    const productService = new ProductService(c.env.AD_DATA, c.env.APP_CACHE);
+    const savedProduct = await productService.create({
+      title: product.title,
+      tagline: product.tagline,
+      description: product.description,
+      hypothesis: product.hypothesis,
+      target_audience: product.target_audience,
+      status: 'draft',
+      created_by: 'agent'
+    });
+
+    console.log(`✅ Generated product: ${savedProduct.title}`);
+
+    return c.json({
+      success: true,
+      product: savedProduct
+    }, 201);
+
+  } catch (error) {
+    console.error('❌ Error generating product:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to generate product',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    }, 500);
   }
 });
 
@@ -438,6 +511,145 @@ app.get('/api/leads', async (c) => {
   } catch (error) {
     return c.json({ success: false, error: 'Failed to list leads',
       message: error instanceof Error ? error.message : 'Unknown error' }, 500);
+  }
+});
+
+// ===== AI AUTOMATION ENDPOINTS =====
+
+/**
+ * POST /api/ai/generate-product
+ *
+ * Generate a new product concept using AI
+ */
+app.post('/api/ai/generate-product', async (c) => {
+  try {
+    // Get configuration from environment
+    const llmProvider = c.env.LLM_PROVIDER || 'raindrop';
+    const useRaindrop = llmProvider.toLowerCase() === 'raindrop';
+    const openrouterApiKey = c.env.OPENROUTER_API_KEY;
+
+    console.log(`🤖 Generating AI product concept using ${useRaindrop ? 'Raindrop AI' : 'OpenRouter'}...`);
+
+    // Generate product concept using AI (with fallback to mock for dev)
+    const product = await generateProductConcept({
+      openrouterApiKey,
+      raindropAI: useRaindrop ? c.env.AI : undefined,
+      useRaindrop
+    });
+
+    // Save the product to storage
+    const productService = new ProductService(c.env.AD_DATA, c.env.APP_CACHE);
+    const savedProduct = await productService.create({
+      title: product.title,
+      tagline: product.tagline,
+      description: product.description,
+      hypothesis: product.hypothesis,
+      target_audience: product.target_audience,
+      status: 'draft',
+      created_by: 'agent'
+    });
+
+    console.log(`✅ Generated product: ${savedProduct.title}`);
+
+    return c.json({
+      success: true,
+      product: savedProduct
+    }, 201);
+
+  } catch (error) {
+    console.error('❌ Error generating product:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to generate product',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    }, 500);
+  }
+});
+
+/**
+ * POST /api/ai/run-experiment
+ *
+ * Run a complete experiment: generate ads, create experiment, deploy to Meta
+ */
+app.post('/api/ai/run-experiment', async (c) => {
+  try {
+    const { product_id } = await c.req.json();
+
+    if (!product_id) {
+      return c.json({ success: false, error: 'product_id is required' }, 400);
+    }
+
+    const productService = new ProductService(c.env.AD_DATA, c.env.APP_CACHE);
+    const experimentManager = new AdExperimentManager(c.env.AD_DATA, c.env.APP_CACHE);
+
+    // Get product
+    const product = await productService.get(product_id);
+    if (!product) {
+      return c.json({ success: false, error: 'Product not found' }, 404);
+    }
+
+    // Determine experiment round
+    const existingExperiments = await experimentManager.listExperimentsByProduct(product_id);
+    const round = existingExperiments.length + 1;
+
+    // Create experiment
+    const experiment = await experimentManager.createExperiment({
+      product_id,
+      round,
+      platform: 'meta_ads',
+      goal: 'leads',
+      budget_per_day_usd: 50,
+      budget_total_usd: 500,
+      target_cpl_threshold_usd: 5,
+      min_leads_for_decision: 10,
+      status: 'pending',
+    });
+
+    // Generate ad variants
+    const llmProvider = c.env.LLM_PROVIDER || 'raindrop';
+    const useRaindrop = llmProvider.toLowerCase() === 'raindrop';
+    const imageProvider = (c.env.IMAGE_PROVIDER || 'freepik') as 'freepik' | 'fal';
+    const openrouterApiKey = c.env.OPENROUTER_API_KEY;
+    const imageApiKey = imageProvider === 'freepik' ? c.env.FREEPIK_API_KEY : c.env.FAL_KEY;
+
+    const variants = await generateAdVariants({
+      productConcept: product,
+      experimentId: experiment.id,
+      numVariants: 3,
+      openrouterApiKey,
+      imageApiKey,
+      imageProvider,
+      raindropAI: useRaindrop ? c.env.AI : undefined,
+      env: c.env,
+    });
+
+    // Update experiment status
+    await experimentManager.updateExperiment({
+      id: experiment.id,
+      status: 'running',
+    });
+
+    // Update product status
+    await productService.update({
+      id: product_id,
+      status: 'testing',
+    });
+
+    return c.json({
+      success: true,
+      experiment_id: experiment.id,
+      num_variants: variants.length,
+      estimated_cost: 2.5,
+      budget_per_day: experiment.budget_per_day_usd,
+      target_cpl: experiment.target_cpl_threshold_usd,
+    });
+  } catch (error) {
+    console.error('Error running experiment:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to run experiment',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    }, 500);
   }
 });
 

@@ -1,0 +1,22 @@
+{
+  "name": "ads-infinitum-test-scripts",
+  "version": "1.0.0",
+  "description": "Test scripts for Ad Infinitum core pipeline",
+  "type": "module",
+  "scripts": {
+    "test": "tsx test-core-pipeline.ts",
+    "test:mock": "tsx test-core-pipeline.ts --mock-meta --mock-product",
+    "test:quick": "tsx test-core-pipeline.ts --mock-meta --num-variants=2",
+    "test:no-meta": "tsx test-core-pipeline.ts --skip-meta"
+  },
+  "dependencies": {
+    "@liquidmetal-ai/raindrop-framework": "latest",
+    "dotenv": "^16.4.5",
+    "tsx": "^4.7.1",
+    "typescript": "^5.0.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0"
+  }
+}
