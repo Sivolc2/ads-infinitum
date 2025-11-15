@@ -264,9 +264,18 @@ app.post('/api/ai/generate-product', async (c) => {
 
     console.log(`✅ Generated product: ${savedProduct.title}`);
 
+    // Add metrics to the product
+    const productWithMetrics = {
+      ...savedProduct,
+      total_experiments: 0,
+      total_leads: 0,
+      avg_cpl_usd: 0,
+      total_spend_usd: 0
+    };
+
     return c.json({
       success: true,
-      product: savedProduct
+      product: productWithMetrics
     }, 201);
 
   } catch (error) {
@@ -551,9 +560,18 @@ app.post('/api/ai/generate-product', async (c) => {
 
     console.log(`✅ Generated product: ${savedProduct.title}`);
 
+    // Add metrics to the product
+    const productWithMetrics = {
+      ...savedProduct,
+      total_experiments: 0,
+      total_leads: 0,
+      avg_cpl_usd: 0,
+      total_spend_usd: 0
+    };
+
     return c.json({
       success: true,
-      product: savedProduct
+      product: productWithMetrics
     }, 201);
 
   } catch (error) {
@@ -596,7 +614,7 @@ app.post('/api/ai/run-experiment', async (c) => {
     const experiment = await experimentManager.createExperiment({
       product_id,
       round,
-      platform: 'meta_ads',
+      platform: 'meta',
       goal: 'leads',
       budget_per_day_usd: 50,
       budget_total_usd: 500,

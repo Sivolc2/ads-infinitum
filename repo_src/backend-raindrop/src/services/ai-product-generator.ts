@@ -26,59 +26,6 @@ interface OpenRouterResponse {
 }
 
 /**
- * Generate a mock product concept for development
- */
-function generateMockProduct(): ProductConcept {
-  const templates = [
-    {
-      title: 'FocusFlow Timer',
-      tagline: 'Stay focused with ambient productivity cues',
-      description: 'A smart desk timer that uses subtle light and sound patterns to help you maintain focus during work sessions. Integrates with your calendar and learns your productivity patterns.',
-      hypothesis: 'Remote workers struggle with maintaining focus in home environments. A physical device that provides ambient cues can help create work boundaries without being disruptive.',
-      target_audience: 'Remote workers and freelancers aged 25-45 who work from home and value productivity tools'
-    },
-    {
-      title: 'SnapRecipe AI',
-      tagline: 'Photo to recipe in seconds',
-      description: 'Take a photo of any meal and instantly get a detailed recipe with ingredients and cooking instructions. Perfect for recreating restaurant dishes at home.',
-      hypothesis: 'Home cooks want to recreate dishes they see but struggle to figure out ingredients and techniques. AI can analyze food photos and generate accurate recipes.',
-      target_audience: 'Home cooking enthusiasts aged 25-50 who eat out frequently and enjoy experimenting in the kitchen'
-    },
-    {
-      title: 'PlantPal Sensor',
-      tagline: 'Never kill a houseplant again',
-      description: 'Smart soil sensor that monitors moisture, light, and nutrients for your plants. Sends personalized care reminders and tips via app.',
-      hypothesis: 'Plant parents struggle to provide proper care because each plant has different needs. Real-time monitoring removes the guesswork.',
-      target_audience: 'Urban millennials aged 25-40 who love houseplants but struggle to keep them alive'
-    },
-    {
-      title: 'PetCam Treat',
-      tagline: 'See, talk to, and treat your pet remotely',
-      description: 'HD camera with treat dispenser that lets you check on and interact with your pets throughout the day. Includes two-way audio and automated treat scheduling.',
-      hypothesis: 'Pet owners feel guilty leaving pets alone and want to maintain connection during the day. Interactive features reduce separation anxiety for both.',
-      target_audience: 'Pet owners aged 25-50 who work outside the home and treat their pets like family'
-    },
-    {
-      title: 'SleepSync Pod',
-      tagline: 'Personal sleep environment optimization',
-      description: 'Smart sleep device that optimizes your bedroom temperature, sounds, and lighting based on your sleep patterns. Learns what helps you sleep best.',
-      hypothesis: 'Poor sleep quality stems from environmental factors people can\'t easily control. Automated optimization removes the trial-and-error.',
-      target_audience: 'Professionals aged 30-55 struggling with sleep quality who value health optimization'
-    }
-  ];
-
-  const template = templates[Math.floor(Math.random() * templates.length)];
-
-  return {
-    id: generateProductId(),
-    ...template,
-    status: 'draft',
-    created_by: 'agent',
-    ...createTimestamps()
-  };
-}
-
-/**
  * Generate a product concept using AI
  */
 export async function generateProductConcept(
@@ -86,66 +33,72 @@ export async function generateProductConcept(
 ): Promise<ProductConcept> {
   const { openrouterApiKey, raindropAI, useRaindrop } = options;
 
-  // If no LLM provider is available, use mock generator for development
-  if (!openrouterApiKey && (!useRaindrop || !raindropAI)) {
-    console.log('⚠️  No LLM provider available, using mock product generator for development');
-    return generateMockProduct();
+  // Check if we have an LLM provider
+  if (!raindropAI && !openrouterApiKey) {
+    throw new Error('No LLM provider available. Set OPENROUTER_API_KEY in .env or deploy to Raindrop platform.');
   }
 
-  const systemPrompt = `You are a creative product strategist and startup advisor.
-Your goal is to generate innovative, viable product concepts that solve real problems.
+  const systemPrompt = `You are a creative product strategist and startup advisor specializing in physical consumer products.
+Your goal is to generate innovative, viable PHYSICAL/HARDWARE product concepts that solve real problems.
 
 Key principles:
 - Identify underserved markets or pain points
-- Create products that are technically feasible
+- Create PHYSICAL products (gadgets, devices, tools, accessories, wearables, etc.) - NO software, apps, or digital services
 - Target specific, reachable audiences
 - Validate assumptions with clear hypotheses
-- Focus on products that can be tested quickly with ads`;
+- Focus on products that can be tested quickly with ads
 
-  const userPrompt = `Generate a single innovative product concept.
+IMPORTANT: Every product must be a tangible, physical item that can be manufactured and shipped.`;
 
-The product should:
-1. Solve a real problem for a specific audience
-2. Be testable with online advertising
-3. Have a clear value proposition
-4. Target a reachable market
+  const userPrompt = `Generate a single innovative PHYSICAL product concept. This must be a hardware/physical product, not software.
+
+CRITICAL REQUIREMENTS:
+1. Must be a PHYSICAL/HARDWARE product (e.g., gadget, device, tool, wearable, accessory)
+2. NO software, apps, digital services, or platforms
+3. Must be tangible and shippable
+4. Solve a real problem for a specific audience
+5. Be testable with online advertising (can show in photos/videos)
+6. Have a clear value proposition
+7. Target a reachable market
+
+Generate something COMPLETELY DIFFERENT and creative each time. Consider:
+- Different product categories (home, fitness, productivity, travel, wellness, etc.)
+- Different target markets and demographics
+- Different price points and use cases
+- Emerging trends and unmet needs
+
+Current timestamp for uniqueness: ${Date.now()}
 
 Provide your response as a JSON object with these fields:
 {
   "title": "Product name (2-4 words)",
   "tagline": "Short tagline (5-10 words)",
-  "description": "Detailed description explaining what the product does and how it works (2-3 sentences)",
+  "description": "Detailed description explaining what the physical product does and how it works (2-3 sentences)",
   "hypothesis": "The core problem this solves and why people will pay for it (1-2 sentences)",
   "target_audience": "Specific target audience with demographics/psychographics (e.g., 'Remote workers aged 25-40 who struggle with focus')"
 }
 
-Be creative but practical. Think about products that could be validated through ad campaigns.`;
+Be creative, innovative, and practical. Generate a unique physical product that could be validated through ad campaigns.`;
 
   let responseText: string;
 
   if (useRaindrop && raindropAI) {
-    // Use Raindrop AI (with fallback to mock if it fails)
-    try {
-      console.log('🤖 Using Raindrop AI (deepseek-r1) to generate product concept...');
+    // Use Raindrop AI (in dev mode, this will use OpenRouter as fallback)
+    console.log('🤖 Using Raindrop AI (deepseek-r1) to generate product concept...');
 
-      const response = await raindropAI.run('deepseek-r1', {
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        temperature: 0.9, // Higher temperature for more creativity
-        max_tokens: 1000
-      });
+    const response = await raindropAI.run('deepseek-r1', {
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 1.0, // Maximum temperature for maximum creativity and variance
+      max_tokens: 1000
+    });
 
-      responseText = response.text || response.response || '';
+    responseText = response.text || response.response || '';
 
-      if (!responseText) {
-        throw new Error('Raindrop AI returned empty response');
-      }
-    } catch (error) {
-      // Raindrop AI failed (likely in dev mode), fall back to mock
-      console.log('⚠️  Raindrop AI unavailable, using mock product generator for development');
-      return generateMockProduct();
+    if (!responseText) {
+      throw new Error('Raindrop AI returned empty response');
     }
   } else if (openrouterApiKey) {
     // Use OpenRouter
@@ -160,12 +113,13 @@ Be creative but practical. Think about products that could be validated through 
         'Authorization': `Bearer ${openrouterApiKey}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': 'https://ads-infinitum.app',
-        'X-Title': 'Ad Infinitum'
+        'X-Title': 'Ad Infinitum',
+        'X-No-Cache': '1'  // Disable caching to ensure fresh responses
       },
       body: JSON.stringify({
         model: 'anthropic/claude-3.5-sonnet',
         messages,
-        temperature: 0.9,
+        temperature: 1.0,  // Maximum temperature for maximum variance
         max_tokens: 1000,
         response_format: { type: 'json_object' }
       })

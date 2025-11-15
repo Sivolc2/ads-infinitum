@@ -28,7 +28,7 @@ class MockService {
       AD_DATA: new MockSmartBucket(),
       APP_CACHE: new MockKVCache(),
       LEAD_INGESTION: new MockQueue(),
-      AI: new MockRaindropAI(),
+      AI: new MockRaindropAI(process.env.OPENROUTER_API_KEY),
     };
   }
 
@@ -87,12 +87,25 @@ class MockSmartBucket {
 class MockKVCache {
   private cache = new Map<string, any>();
 
-  async get(key: string) {
-    return this.cache.get(key) || null;
+  async get(key: string, options?: { type?: 'json' | 'text' }) {
+    const value = this.cache.get(key);
+    if (!value) return null;
+
+    // If type is 'json', parse the string
+    if (options?.type === 'json') {
+      try {
+        return typeof value === 'string' ? JSON.parse(value) : value;
+      } catch (e) {
+        return value;
+      }
+    }
+
+    return value;
   }
 
-  async put(key: string, value: any) {
+  async put(key: string, value: any, options?: { expirationTtl?: number }) {
     this.cache.set(key, value);
+    // Note: expirationTtl is ignored in mock
   }
 
   async delete(key: string) {
@@ -108,14 +121,59 @@ class MockQueue {
 }
 
 class MockRaindropAI {
-  async run(model: string, options: any) {
-    // Mock AI response - in production this would use actual Raindrop AI
-    console.log(`🤖 Mock AI call: ${model}`);
+  private openrouterKey: string | undefined;
 
-    // For development, we'll throw an error to encourage using OpenRouter
-    throw new Error(
-      'Raindrop AI not available in local dev mode. Set LLM_PROVIDER=openrouter to use OpenRouter instead.'
-    );
+  constructor(openrouterKey?: string) {
+    this.openrouterKey = openrouterKey;
+  }
+
+  async run(model: string, options: any) {
+    console.log(`🤖 Raindrop AI call (${model}) - Using OpenRouter fallback in dev mode`);
+
+    // In dev mode, forward to OpenRouter if available
+    if (!this.openrouterKey) {
+      throw new Error(
+        'Raindrop AI not available in local dev mode and no OPENROUTER_API_KEY provided. Set OPENROUTER_API_KEY in .env to use OpenRouter.'
+      );
+    }
+
+    // Map Raindrop model to OpenRouter model
+    const modelMap: Record<string, string> = {
+      'deepseek-r1': 'deepseek/deepseek-r1',
+      '@cf/deepseek/deepseek-r1': 'deepseek/deepseek-r1',
+    };
+
+    const openrouterModel = modelMap[model] || 'anthropic/claude-3.5-sonnet';
+
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.openrouterKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://ads-infinitum.app',
+        'X-Title': 'Ad Infinitum (Dev)',
+        'X-No-Cache': '1',  // Disable caching to ensure fresh responses
+      },
+      body: JSON.stringify({
+        model: openrouterModel,
+        messages: options.messages || [],
+        temperature: options.temperature || 1.0,  // Use higher default temperature for more variance
+        max_tokens: options.max_tokens || 1000,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OpenRouter API error: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json();
+    const content = data.choices[0]?.message?.content || '';
+
+    return {
+      response: content,
+      text: content,
+    };
   }
 }
 
@@ -159,15 +217,16 @@ const port = parseInt(process.env.PORT || '8787');
 
 console.log('🚀 Starting Ad Infinitum Backend (Dev Mode)...\n');
 console.log('📊 Configuration:');
-console.log(`   LLM Provider: ${service.env.LLM_PROVIDER}`);
+console.log(`   LLM Provider: ${service.env.LLM_PROVIDER} (Raindrop AI → OpenRouter fallback in dev)`);
 console.log(`   Image Provider: ${service.env.IMAGE_PROVIDER}`);
 console.log(`   Freepik API: ${service.env.FREEPIK_API_KEY ? '✅ Configured' : '❌ Missing'}`);
 console.log(`   FAL API: ${service.env.FAL_KEY ? '✅ Configured' : '❌ Missing'}`);
-console.log(`   OpenRouter API: ${service.env.OPENROUTER_API_KEY ? '✅ Configured' : '❌ Missing'}`);
+console.log(`   OpenRouter API: ${service.env.OPENROUTER_API_KEY ? '✅ Configured' : '❌ Missing (required for dev mode)'}`);
 console.log('');
-console.log('⚠️  Note: Using mock Raindrop bindings for local development');
-console.log('   - In-memory storage (data not persisted)');
-console.log('   - Raindrop AI unavailable (use LLM_PROVIDER=openrouter)');
+console.log('ℹ️  Dev Mode Notes:');
+console.log('   - In-memory storage (data resets on server restart)');
+console.log('   - Raindrop AI calls forwarded to OpenRouter in dev');
+console.log('   - Set OPENROUTER_API_KEY in .env to enable AI features');
 console.log('');
 
 serve(
