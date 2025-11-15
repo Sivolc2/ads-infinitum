@@ -16,4 +16,7 @@ export interface Env {
       response_format?: { type: string };
     }): Promise<any>;
   };
+
+  // Environment variables
+  FASTINO_API_KEY?: string;
 }

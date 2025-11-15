@@ -1,0 +1,34 @@
+application "ads-infinitum" {
+  service "api" {
+    visibility = "public"
+
+    # Environment variables for API integrations
+    env {
+      LLM_PROVIDER = var()           # 'raindrop' or 'openrouter' (default: raindrop)
+      OPENROUTER_API_KEY = secret()  # Only needed if LLM_PROVIDER=openrouter
+      FREEPIK_API_KEY = secret()     # For image generation
+      META_AD_ACCOUNT_ID = var()
+      META_PAGE_ID = var()
+    }
+  }
+
+  actor "experiment-manager" {
+    visibility = "private"
+  }
+
+  actor "metrics-collector" {
+    visibility = "private"
+  }
+
+  smartbucket "ad-data" {
+    visibility = "private"
+  }
+
+  kvcache "app-cache" {
+    visibility = "private"
+  }
+
+  queue "lead-ingestion" {
+    visibility = "private"
+  }
+}

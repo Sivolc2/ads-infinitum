@@ -1,101 +1,131 @@
-.container {
+/* Main App Styles for Ad Infinitum */
+
+#root {
   width: 100%;
-  max-width: 800px;
-  margin: 0 auto;
+  height: 100%;
 }
 
+/* Common Card Styles */
 .card {
-  background-color: #1a1a1a;
+  background: linear-gradient(135deg, #1e1e2e 0%, #2a2a3e 100%);
+  border: 1px solid #3a3a4e;
+  border-radius: 12px;
+  padding: 1.5rem;
+  transition: all 0.3s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.2);
+  border-color: #667eea;
+}
+
+/* Common Button Styles */
+.btn {
+  padding: 0.75rem 1.5rem;
   border-radius: 8px;
-  padding: 20px;
-  margin-bottom: 20px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: none;
+  text-decoration: none;
+  display: inline-block;
 }
 
-.form-group {
-  margin-bottom: 15px;
-  text-align: left;
+.btn-primary {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #ffffff;
 }
 
-.form-group label {
-  display: block;
-  margin-bottom: 5px;
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 
-.form-group input,
-.form-group textarea {
-  width: 100%;
-  padding: 8px;
-  border-radius: 4px;
-  border: 1px solid #ccc;
-  background-color: #242424;
-  color: white;
+.btn-secondary {
+  background: rgba(102, 126, 234, 0.1);
+  border: 1px solid #667eea;
+  color: #667eea;
 }
 
-.form-group textarea {
-  min-height: 80px;
+.btn-secondary:hover {
+  background: rgba(102, 126, 234, 0.2);
+  transform: translateY(-2px);
 }
 
-.button-primary {
-  background-color: #646cff;
-  color: white;
+/* Loading State */
+.loading {
+  text-align: center;
+  padding: 4rem 2rem;
+  font-size: 1.25rem;
+  color: #888;
+  animation: pulse 2s ease-in-out infinite;
 }
 
-.error {
-  color: #ff6464;
+/* Error Message */
+.error-message {
+  background: linear-gradient(135deg, #2e1e1e 0%, #3e2a2a 100%);
+  border: 1px solid #ef4444;
+  border-radius: 12px;
+  padding: 2rem;
+  text-align: center;
 }
 
-.item-list {
-  list-style: none;
-  padding: 0;
+.error-message h3 {
+  color: #ef4444;
+  margin: 0 0 0.5rem 0;
 }
 
-.item {
-  background-color: #2c2c2c;
-  border-radius: 4px;
-  padding: 15px;
-  margin-bottom: 10px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.error-message p {
+  color: #888;
+  margin: 0 0 1.5rem 0;
 }
 
-.item-content {
-  flex: 1;
-  text-align: left;
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: 4rem 2rem;
+  background: linear-gradient(135deg, #1e1e2e 0%, #2a2a3e 100%);
+  border: 1px solid #3a3a4e;
+  border-radius: 12px;
 }
 
-.item-name {
-  font-weight: bold;
-  margin-bottom: 5px;
+.empty-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+  opacity: 0.7;
 }
 
-.item-description {
-  color: #aaa;
-  font-size: 0.9em;
+.empty-state h3 {
+  color: #ffffff;
+  margin: 0 0 0.5rem 0;
 }
 
-.item-delete {
-  background-color: #ff6464;
-  color: white;
-  margin-left: 10px;
+.empty-state p {
+  color: #888;
+  margin: 0;
 }
 
-@media (prefers-color-scheme: light) {
-  .card {
-    background-color: #f9f9f9;
+/* Status Badge */
+.status-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Responsive Utilities */
+@media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
   }
-  
-  .form-group input,
-  .form-group textarea {
-    background-color: white;
-    color: #213547;
+
+  .btn {
+    width: 100%;
   }
-  
-  .item {
-    background-color: #eaeaea;
-  }
-  
-  .item-description {
-    color: #666;
-  }
-} 
+}

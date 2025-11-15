@@ -2,10 +2,15 @@
 import { config } from "dotenv";
 import { generateCampaignImage } from "./lib/freepik.js";
 import { writeFile } from "fs/promises";
-import { join } from "path";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 
-// Load environment variables from .env file
-config();
+// Get the directory of the current file
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Load environment variables from .env file in the project root
+config({ path: join(__dirname, "../../../.env") });
 
 async function main() {
   const productName = "SmartLens Pro";

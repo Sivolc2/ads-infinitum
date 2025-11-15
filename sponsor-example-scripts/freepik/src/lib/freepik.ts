@@ -1,12 +1,12 @@
 // src/lib/freepik.ts
-const FREEPIK_API_KEY = process.env.FREEPIK_API_KEY!;
-
 export type GeneratedImage = {
   base64: string;
   has_nsfw: boolean;
 };
 
 export async function generateCampaignImage(prompt: string): Promise<GeneratedImage[]> {
+  const FREEPIK_API_KEY = process.env.FREEPIK_API_KEY;
+
   if (!FREEPIK_API_KEY) {
     throw new Error("FREEPIK_API_KEY environment variable is not set");
   }
@@ -20,18 +20,8 @@ export async function generateCampaignImage(prompt: string): Promise<GeneratedIm
     body: JSON.stringify({
       prompt,
       negative_prompt: "blurry, low quality, text artifacts, watermark",
-      guidance_scale: 1.4,
       num_images: 1,
       image: { size: "square_1_1" },
-      styling: {
-        style: "concept-art",
-        effects: {
-          color: "pastel",
-          lightning: "warm",
-          framing: "centered",
-        },
-      },
-      filter_nsfw: true,
     }),
   });
 

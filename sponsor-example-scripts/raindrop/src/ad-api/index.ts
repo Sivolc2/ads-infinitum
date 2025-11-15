@@ -6,6 +6,11 @@ import { QueueSendOptions } from '@liquidmetal-ai/raindrop-framework';
 import { KvCachePutOptions, KvCacheGetOptions } from '@liquidmetal-ai/raindrop-framework';
 import { BucketPutOptions, BucketListOptions } from '@liquidmetal-ai/raindrop-framework';
 import { Env } from './raindrop.gen';
+import { createFastinoClient } from '../lib/fastino-client';
+import { LeadEnrichmentWorker } from '../workers/lead-enrichment';
+import { AdQualityAggregator } from '../workers/ad-quality-aggregator';
+import { Lead, UserProfile, EnrichLeadRequest, EnrichLeadResponse, AdQualityStats } from '../types/lead-intelligence';
+import { generateAdImages, imageToDataUrl, imageToBuffer, ImageGenProvider } from '../lib/image-gen';
 
 // Create Hono app with middleware
 const app = new Hono<{ Bindings: Env }>();
@@ -98,6 +103,182 @@ app.post('/optimize-ads', async (c) => {
   } catch (error) {
     return c.json({
       error: 'Ad optimization failed',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    }, 500);
+  }
+});
+
+// === Image Generation Endpoint ===
+type GenerateImagesRequest = {
+  productName: string;
+  audience: string;
+  angle: string;
+  numImages?: number;
+  provider?: ImageGenProvider;  // 'fal' or 'freepik'
+};
+
+type GenerateImagesResponse = {
+  images: Array<{
+    url?: string;
+    base64?: string;
+    dataUrl: string;
+    width?: number;
+    height?: number;
+    provider: string;
+  }>;
+  provider: string;
+  generationTime: number;
+};
+
+app.post('/generate-images', async (c) => {
+  try {
+    const body = await c.req.json<GenerateImagesRequest>();
+
+    if (!body.productName || !body.audience || !body.angle) {
+      return c.json({
+        error: 'productName, audience, and angle are required'
+      }, 400);
+    }
+
+    const provider = body.provider || 'fal';
+    console.log(`🎨 Generating images with ${provider}...`);
+
+    const startTime = Date.now();
+
+    const images = await generateAdImages({
+      productName: body.productName,
+      audience: body.audience,
+      angle: body.angle,
+      numImages: body.numImages || 2,
+      provider,
+    });
+
+    const generationTime = Date.now() - startTime;
+
+    const response: GenerateImagesResponse = {
+      images: images.map(img => ({
+        url: img.url,
+        base64: img.base64,
+        dataUrl: imageToDataUrl(img),
+        width: img.width,
+        height: img.height,
+        provider: img.provider,
+      })),
+      provider,
+      generationTime,
+    };
+
+    console.log(`✅ Generated ${images.length} images in ${generationTime}ms`);
+
+    return c.json(response);
+  } catch (error) {
+    console.error('Image generation failed:', error);
+    return c.json({
+      error: 'Image generation failed',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    }, 500);
+  }
+});
+
+// === Track B: Lead Intelligence Endpoints ===
+
+// In-memory storage for demo purposes
+// In production, use SmartBuckets or external database
+const profilesStore = new Map<string, UserProfile>();
+const adLeadsStore = new Map<string, string[]>(); // ad_id -> lead_ids[]
+
+/**
+ * POST /internal/enrich-lead
+ * Enriches a raw lead using Fastino to extract user profile data
+ */
+app.post('/internal/enrich-lead', async (c) => {
+  try {
+    const body = await c.req.json<EnrichLeadRequest>();
+
+    if (!body.lead) {
+      return c.json({ error: 'lead is required' }, 400);
+    }
+
+    const startTime = Date.now();
+
+    // Get Fastino API key from environment
+    const fastinoApiKey = c.env.FASTINO_API_KEY;
+    if (!fastinoApiKey) {
+      return c.json({
+        error: 'FASTINO_API_KEY not configured',
+        message: 'Set FASTINO_API_KEY in your Raindrop environment variables'
+      }, 500);
+    }
+
+    // Create Fastino client and enrichment worker
+    const fastinoClient = createFastinoClient(fastinoApiKey);
+    const enrichmentWorker = new LeadEnrichmentWorker(fastinoClient);
+
+    // Enrich the lead
+    const profile = await enrichmentWorker.enrichLead(body.lead);
+
+    // Store in memory (in production, persist to database)
+    profilesStore.set(profile.lead_id, profile);
+
+    // Track which leads belong to which ad
+    if (body.lead.ad_id) {
+      const adLeads = adLeadsStore.get(body.lead.ad_id) || [];
+      if (!adLeads.includes(body.lead.id)) {
+        adLeads.push(body.lead.id);
+        adLeadsStore.set(body.lead.ad_id, adLeads);
+      }
+    }
+
+    const enrichmentTime = Date.now() - startTime;
+
+    const response: EnrichLeadResponse = {
+      lead_id: body.lead.id,
+      profile,
+      enrichment_time_ms: enrichmentTime,
+    };
+
+    return c.json(response);
+  } catch (error) {
+    console.error('Lead enrichment failed:', error);
+    return c.json({
+      error: 'Lead enrichment failed',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    }, 500);
+  }
+});
+
+/**
+ * GET /internal/ad-quality/:adId
+ * Returns quality stats for an ad based on its enriched leads
+ */
+app.get('/internal/ad-quality/:adId', async (c) => {
+  try {
+    const adId = c.req.param('adId');
+
+    if (!adId) {
+      return c.json({ error: 'adId is required' }, 400);
+    }
+
+    // Get lead IDs for this ad
+    const leadIds = adLeadsStore.get(adId) || [];
+
+    // Get profiles for these leads
+    const profiles = leadIds
+      .map(leadId => profilesStore.get(leadId))
+      .filter((p): p is UserProfile => p !== undefined);
+
+    // Aggregate quality stats
+    const aggregator = new AdQualityAggregator();
+    const stats = aggregator.aggregateAdQuality({
+      ad_id: adId,
+      profiles,
+    });
+
+    return c.json(stats);
+  } catch (error) {
+    console.error('Ad quality aggregation failed:', error);
+    return c.json({
+      error: 'Ad quality aggregation failed',
       message: error instanceof Error ? error.message : 'Unknown error'
     }, 500);
   }

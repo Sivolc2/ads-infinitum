@@ -1,0 +1,258 @@
+.contracts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.contract-card {
+  background: linear-gradient(135deg, #1e1e2e 0%, #2a2a3e 100%);
+  border: 1px solid #3a3a4e;
+  border-radius: 12px;
+  padding: 1.5rem;
+  transition: all 0.3s ease;
+}
+
+.contract-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.2);
+  border-color: #667eea;
+}
+
+.contract-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+  gap: 1rem;
+}
+
+.contract-title {
+  font-size: 1.5rem;
+  margin: 0 0 0.5rem 0;
+  color: #ffffff;
+}
+
+.contract-product {
+  color: #667eea;
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: color 0.2s ease;
+}
+
+.contract-product:hover {
+  color: #8b9aff;
+}
+
+.contract-badges {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.platform-badge {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #ffffff;
+  padding: 0.375rem 0.875rem;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.contract-details {
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.detail-label {
+  font-size: 0.875rem;
+  color: #888;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.detail-value {
+  font-size: 1rem;
+  color: #e0e0e0;
+  font-weight: 500;
+}
+
+.budget-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #10b981;
+}
+
+.job-id {
+  font-family: monospace;
+  background: rgba(102, 126, 234, 0.1);
+  padding: 0.25rem 0.75rem;
+  border-radius: 6px;
+  color: #667eea;
+}
+
+.builder-notes {
+  background: rgba(102, 126, 234, 0.05);
+  border: 1px solid #667eea;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.notes-label {
+  font-size: 0.875rem;
+  color: #888;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.notes-content {
+  font-size: 0.95rem;
+  color: #e0e0e0;
+  line-height: 1.6;
+}
+
+.contract-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Modal Specific Styles */
+.modal-large {
+  max-width: 900px;
+}
+
+.spec-section {
+  margin-bottom: 2rem;
+}
+
+.spec-section:last-child {
+  margin-bottom: 0;
+}
+
+.spec-section h3 {
+  font-size: 1.25rem;
+  color: #ffffff;
+  margin: 0 0 1rem 0;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #3a3a4e;
+}
+
+.spec-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.spec-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.spec-item strong {
+  font-size: 0.875rem;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.spec-item span {
+  font-size: 0.95rem;
+  color: #e0e0e0;
+}
+
+.budget-highlight {
+  font-size: 1.5rem !important;
+  font-weight: 700 !important;
+  color: #10b981 !important;
+}
+
+.notes-box {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  padding: 1rem;
+  font-size: 0.95rem;
+  color: #e0e0e0;
+  line-height: 1.8;
+}
+
+.spec-markdown {
+  background: #000;
+  border: 1px solid #3a3a4e;
+  border-radius: 8px;
+  padding: 1.5rem;
+  font-size: 0.95rem;
+  color: #e0e0e0;
+  line-height: 1.8;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.timeline-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  border-left: 3px solid #667eea;
+}
+
+.timeline-date {
+  font-size: 0.95rem;
+  color: #667eea;
+  font-weight: 600;
+  min-width: 150px;
+}
+
+.timeline-label {
+  font-size: 0.95rem;
+  color: #b0b0b0;
+}
+
+@media (max-width: 768px) {
+  .contract-header {
+    flex-direction: column;
+  }
+
+  .contract-details {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .spec-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .timeline-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .timeline-date {
+    min-width: auto;
+  }
+}

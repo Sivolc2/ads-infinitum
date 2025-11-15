@@ -1,0 +1,28 @@
+{
+  "name": "ads-infinitum-backend",
+  "version": "1.0.0",
+  "description": "Ad Infinitum Backend - Raindrop-powered ad testing and product validation platform",
+  "type": "module",
+  "main": "src/api/index.ts",
+  "scripts": {
+    "dev": "tsx watch dev-server.ts",
+    "dev:raindrop": "raindrop dev",
+    "build": "raindrop build",
+    "deploy": "raindrop deploy"
+  },
+  "dependencies": {
+    "@liquidmetal-ai/raindrop-framework": "latest",
+    "@hono/node-server": "^1.12.0",
+    "dotenv": "^16.4.5",
+    "hono": "^4.0.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.7.1",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

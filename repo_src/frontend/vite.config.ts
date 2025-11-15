@@ -8,9 +8,14 @@ export default defineConfig({
     port: 5173, // Default Vite port
     host: true, // Allow access from network
     proxy: {
-      // Proxy API requests to backend
+      // Proxy API requests to Raindrop backend
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:8787',
+        changeOrigin: true,
+        secure: false
+      },
+      '/internal': {
+        target: 'http://localhost:8787',
         changeOrigin: true,
         secure: false
       }
