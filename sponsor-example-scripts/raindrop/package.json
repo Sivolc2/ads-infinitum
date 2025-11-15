@@ -10,7 +10,8 @@
     "deploy": "raindrop deploy"
   },
   "dependencies": {
-    "@liquidmetal-ai/raindrop-framework": "latest"
+    "@liquidmetal-ai/raindrop-framework": "latest",
+    "hono": "^4.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
