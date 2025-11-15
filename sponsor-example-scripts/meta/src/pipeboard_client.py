@@ -21,15 +21,17 @@ class PipeboardMetaAdsClient:
         """
         self.api_token = api_token
         self.ad_account_id = ad_account_id
-        self.base_url = "https://api.pipeboard.com/v1"
+        self.endpoint_url = "https://mcp.pipeboard.co/meta-ads-mcp"
         self.headers = {
             "Authorization": f"Bearer {api_token}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Accept": "application/json"
         }
+        self._request_id = 0
 
     def _call_mcp_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Call a Pipeboard MCP tool
+        Call a Pipeboard MCP tool using JSON-RPC 2.0 format
 
         Args:
             tool_name: Name of the MCP tool (e.g., "upload_ad_image")
@@ -38,19 +40,53 @@ class PipeboardMetaAdsClient:
         Returns:
             Response from the MCP tool
         """
+        self._request_id += 1
+
+        # JSON-RPC 2.0 format
         payload = {
-            "name": tool_name,
-            "arguments": arguments
+            "jsonrpc": "2.0",
+            "id": self._request_id,
+            "method": "tools/call",
+            "params": {
+                "name": tool_name,
+                "arguments": arguments
+            }
         }
 
         response = requests.post(
-            f"{self.base_url}/mcp/tools/execute",
+            self.endpoint_url,
             headers=self.headers,
             json=payload,
             timeout=60
         )
         response.raise_for_status()
-        return response.json()
+
+        result = response.json()
+
+        # Handle JSON-RPC error responses
+        if "error" in result:
+            error = result["error"]
+            raise Exception(f"MCP Error {error.get('code')}: {error.get('message')}")
+
+        # Extract the result content
+        mcp_result = result.get("result", {})
+
+        # Check for MCP-level errors
+        if mcp_result.get("isError"):
+            error_content = mcp_result.get("content", [{}])[0].get("text", "Unknown error")
+            raise Exception(f"MCP Tool Error: {error_content}")
+
+        # Parse the actual response from structuredContent.result
+        structured = mcp_result.get("structuredContent", {})
+        result_str = structured.get("result", "{}")
+
+        # Parse the JSON string
+        import json
+        try:
+            return json.loads(result_str)
+        except json.JSONDecodeError:
+            # If it's not JSON, return the raw result
+            return mcp_result
 
     def upload_ad_image(self, image_url: str, filename: str) -> str:
         """
@@ -64,12 +100,15 @@ class PipeboardMetaAdsClient:
             Image hash that can be used in ad creatives
         """
         result = self._call_mcp_tool("upload_ad_image", {
-            "ad_account_id": self.ad_account_id,
+            "account_id": self.ad_account_id,
             "image_url": image_url,
             "filename": filename
         })
 
         # Extract the hash from the response
+        # Response format: {"images": {"bytes": {"hash": "..."}}}
+        if "images" in result:
+            return result["images"]["bytes"]["hash"]
         return result.get("hash") or result.get("image_hash")
 
     def create_campaign(
@@ -90,7 +129,7 @@ class PipeboardMetaAdsClient:
             Campaign ID
         """
         result = self._call_mcp_tool("create_campaign", {
-            "ad_account_id": self.ad_account_id,
+            "account_id": self.ad_account_id,
             "name": name,
             "objective": objective,
             "status": status,
@@ -131,7 +170,7 @@ class PipeboardMetaAdsClient:
             end_time = (datetime.now() + timedelta(days=4)).strftime("%Y-%m-%dT09:00:00-08:00")
 
         result = self._call_mcp_tool("create_adset", {
-            "ad_account_id": self.ad_account_id,
+            "account_id": self.ad_account_id,
             "campaign_id": campaign_id,
             "name": name,
             "status": status,
@@ -174,7 +213,7 @@ class PipeboardMetaAdsClient:
             Creative ID
         """
         result = self._call_mcp_tool("create_ad_creative", {
-            "ad_account_id": self.ad_account_id,
+            "account_id": self.ad_account_id,
             "name": name,
             "object_story_spec": {
                 "page_id": page_id,
@@ -214,7 +253,7 @@ class PipeboardMetaAdsClient:
             Ad ID
         """
         result = self._call_mcp_tool("create_ad", {
-            "ad_account_id": self.ad_account_id,
+            "account_id": self.ad_account_id,
             "adset_id": adset_id,
             "name": name,
             "creative": {"creative_id": creative_id},

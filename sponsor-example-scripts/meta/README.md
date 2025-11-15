@@ -72,7 +72,7 @@ Ensure your Pipeboard connection has these Meta API scopes:
    # Get from your Facebook Page settings
    META_PAGE_ID=123456789012345
 
-   # Get from Meta Business Manager
+   # Get from Meta Business Manager (OPTIONAL - see below)
    META_BUSINESS_ID=123456789012345
 
    # Your landing page URL
@@ -81,9 +81,22 @@ Ensure your Pipeboard connection has these Meta API scopes:
 
 ### Finding Your Meta IDs
 
-- **Ad Account ID**: Go to [Meta Ads Manager](https://business.facebook.com/adsmanager) → Settings. The ID is in the format `act_123456789012345`
+- **Ad Account ID**: Go to [Meta Ads Manager](https://business.facebook.com/adsmanager) → Settings. The ID is in the format `act_123456789012345`. **Note**: Make sure to include the `act_` prefix.
 - **Page ID**: Go to your Facebook Page → About → Page Transparency → Page ID
-- **Business ID**: Go to [Business Settings](https://business.facebook.com/settings) → Business Info → Business ID
+- **Business ID** (Optional): Go to [Business Settings](https://business.facebook.com/settings) → Business Info → Business ID
+
+### Is Business ID Required?
+
+**No, the Business ID is optional for most operations.** You only need it for:
+
+- **Multi-account operations**: When you want to list or manage multiple ad accounts within a Business Manager
+- **Business-level assets**: Accessing business-owned assets, catalogs, or pixels
+- **Permissions management**: Setting up or modifying user permissions at the business level
+
+**For basic ad operations (creating campaigns, ad sets, ads, and retrieving metrics), you only need:**
+- Pipeboard API Token
+- Meta Ad Account ID (with `act_` prefix)
+- Facebook Page ID (for creating ad creatives)
 
 ## Usage
 
