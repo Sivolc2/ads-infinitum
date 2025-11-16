@@ -1,0 +1,45 @@
+# Cloudflare Workers Configuration Example
+# Copy this file to wrangler.toml and customize for your deployment
+
+name = "ad-infinitum-backend"
+main = "src/api/index.ts"
+compatibility_date = "2024-01-01"
+
+# Scheduled optimization cron job
+# Runs every hour to evaluate and optimize ad performance
+[triggers]
+crons = ["0 * * * *"]  # Every hour at minute 0
+
+# Alternative cron schedules:
+# crons = ["0 */6 * * *"]   # Every 6 hours
+# crons = ["0 0 * * *"]     # Once daily at midnight
+# crons = ["0 */12 * * *"]  # Twice daily (every 12 hours)
+# crons = ["0 0,12 * * *"]  # At midnight and noon
+
+# Raindrop Framework Bindings
+[[raindrop.data]]
+binding = "AD_DATA"
+type = "smart-bucket"
+
+[[raindrop.cache]]
+binding = "APP_CACHE"
+type = "kv"
+ttl = 1800  # 30 minutes
+
+[[raindrop.queue]]
+binding = "LEAD_INGESTION"
+type = "queue"
+
+[[raindrop.ai]]
+binding = "AI"
+type = "ai"
+
+# Environment Variables
+[vars]
+LLM_PROVIDER = "raindrop"  # or "openrouter"
+IMAGE_PROVIDER = "freepik"  # or "fal"
+
+# Secrets (set via `wrangler secret put <NAME>`)
+# - OPENROUTER_API_KEY
+# - FREEPIK_API_KEY
+# - FAL_KEY

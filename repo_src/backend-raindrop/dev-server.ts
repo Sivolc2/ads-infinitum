@@ -20,7 +20,8 @@ class MockService {
       FREEPIK_API_KEY: process.env.FREEPIK_API_KEY,
       FAL_KEY: process.env.FAL_KEY,
 
-      // Meta Ads
+      // Meta Ads via Pipeboard
+      PIPEBOARD_API_TOKEN: process.env.PIPEBOARD_API_TOKEN,
       META_AD_ACCOUNT_ID: process.env.META_AD_ACCOUNT_ID,
       META_PAGE_ID: process.env.META_PAGE_ID,
 
@@ -28,7 +29,7 @@ class MockService {
       AD_DATA: new MockSmartBucket(),
       APP_CACHE: new MockKVCache(),
       LEAD_INGESTION: new MockQueue(),
-      AI: new MockRaindropAI(),
+      AI: new MockRaindropAI(process.env.OPENROUTER_API_KEY),
     };
   }
 
@@ -47,11 +48,21 @@ class MockSmartBucket {
   private storage = new Map<string, any>();
 
   async get(key: string) {
-    return this.storage.get(key) || null;
+    const value = this.storage.get(key);
+    if (!value) return null;
+
+    // Return an object that mimics R2 object with text() method
+    return {
+      text: async () => value,
+      json: async () => JSON.parse(value),
+      arrayBuffer: async () => new TextEncoder().encode(value).buffer,
+    };
   }
 
   async put(key: string, value: any) {
-    this.storage.set(key, value);
+    // Store as string (like R2 does)
+    const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
+    this.storage.set(key, stringValue);
     return { success: true };
   }
 
@@ -60,10 +71,13 @@ class MockSmartBucket {
   }
 
   async list(options?: any) {
+    const prefix = options?.prefix || '';
+    const entries = Array.from(this.storage.entries())
+      .filter(([key]) => key.startsWith(prefix));
+
     return {
-      objects: Array.from(this.storage.entries()).map(([key, value]) => ({
+      objects: entries.map(([key]) => ({
         key,
-        value,
         uploaded: new Date(),
       })),
       truncated: false,
@@ -75,19 +89,24 @@ class MockKVCache {
   private cache = new Map<string, any>();
 
   async get(key: string, options?: { type?: 'text' | 'json' | 'arrayBuffer' | 'stream' }) {
-    const value = this.cache.get(key) || null;
+    const value = this.cache.get(key);
     if (!value) return null;
 
     // Handle different return types
     if (options?.type === 'json') {
-      return typeof value === 'string' ? JSON.parse(value) : value;
+      try {
+        return typeof value === 'string' ? JSON.parse(value) : value;
+      } catch (e) {
+        return value;
+      }
     }
+
     return value;
   }
 
   async put(key: string, value: any, options?: { expirationTtl?: number }) {
-    // Ignore TTL in mock - would need setTimeout to handle properly
     this.cache.set(key, value);
+    // Note: expirationTtl is ignored in mock
   }
 
   async delete(key: string) {
@@ -103,15 +122,94 @@ class MockQueue {
 }
 
 class MockRaindropAI {
-  async run(model: string, options: any) {
-    // Mock AI response - in production this would use actual Raindrop AI
-    console.log(`🤖 Mock AI call: ${model}`);
+  private openrouterKey: string | undefined;
 
-    // For development, we'll throw an error to encourage using OpenRouter
-    throw new Error(
-      'Raindrop AI not available in local dev mode. Set LLM_PROVIDER=openrouter to use OpenRouter instead.'
-    );
+  constructor(openrouterKey?: string) {
+    this.openrouterKey = openrouterKey;
   }
+
+  async run(model: string, options: any) {
+    console.log(`🤖 Raindrop AI call (${model}) - Using OpenRouter fallback in dev mode`);
+
+    // In dev mode, forward to OpenRouter if available
+    if (!this.openrouterKey) {
+      throw new Error(
+        'Raindrop AI not available in local dev mode and no OPENROUTER_API_KEY provided. Set OPENROUTER_API_KEY in .env to use OpenRouter.'
+      );
+    }
+
+    // Map Raindrop model to OpenRouter model
+    const modelMap: Record<string, string> = {
+      'deepseek-r1': 'deepseek/deepseek-r1',
+      '@cf/deepseek/deepseek-r1': 'deepseek/deepseek-r1',
+    };
+
+    const openrouterModel = modelMap[model] || 'anthropic/claude-3.5-sonnet';
+
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.openrouterKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://ads-infinitum.app',
+        'X-Title': 'Ad Infinitum (Dev)',
+        'X-No-Cache': '1',  // Disable caching to ensure fresh responses
+      },
+      body: JSON.stringify({
+        model: openrouterModel,
+        messages: options.messages || [],
+        temperature: options.temperature || 1.0,  // Use higher default temperature for more variance
+        max_tokens: options.max_tokens || 1000,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OpenRouter API error: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json();
+    const content = data.choices[0]?.message?.content || '';
+
+    return {
+      response: content,
+      text: content,
+    };
+  }
+}
+
+// Seed database with sample products
+async function seedDatabase(bucket: MockSmartBucket, cache: MockKVCache) {
+  const { ProductService } = await import('./src/services/product-service.js');
+  const productService = new ProductService(bucket, cache);
+
+  const sampleProducts = [
+    {
+      title: 'Smart Plant Monitor',
+      tagline: 'Never kill a plant again',
+      description: 'An IoT device that monitors soil moisture, light levels, and temperature to keep your plants thriving. Sends alerts to your phone when your plants need attention and provides personalized care recommendations.',
+      hypothesis: 'Plant enthusiasts struggle to maintain optimal growing conditions and often forget watering schedules. This device provides real-time monitoring and actionable insights to ensure plant health.',
+      target_audience: 'Urban millennials and Gen Z plant owners, ages 25-40, who love plants but struggle with plant care',
+      status: 'draft' as const,
+      created_by: 'agent' as const,
+    },
+    {
+      title: 'Focus Flow Timer',
+      tagline: 'Pomodoro meets ambient intelligence',
+      description: 'A physical productivity timer with integrated ambient lighting and soundscapes. Uses the Pomodoro technique enhanced with binaural beats and color psychology to maximize focus and minimize distractions.',
+      hypothesis: 'Remote workers need better tools to maintain focus in home environments filled with distractions. A dedicated physical device creates psychological commitment and environmental cues that software alone cannot provide.',
+      target_audience: 'Knowledge workers, freelancers, and students ages 22-45 who work from home and struggle with focus',
+      status: 'draft' as const,
+      created_by: 'agent' as const,
+    },
+  ];
+
+  console.log('🌱 Seeding database with sample products...');
+  for (const productData of sampleProducts) {
+    const product = await productService.create(productData);
+    console.log(`   ✅ Created: ${product.title}`);
+  }
+  console.log('');
 }
 
 // Start the server
@@ -120,15 +218,27 @@ const port = parseInt(process.env.PORT || '8787');
 
 console.log('🚀 Starting Ad Infinitum Backend (Dev Mode)...\n');
 console.log('📊 Configuration:');
-console.log(`   LLM Provider: ${service.env.LLM_PROVIDER}`);
+console.log(`   LLM Provider: ${service.env.LLM_PROVIDER} (Raindrop AI → OpenRouter fallback in dev)`);
 console.log(`   Image Provider: ${service.env.IMAGE_PROVIDER}`);
 console.log(`   Freepik API: ${service.env.FREEPIK_API_KEY ? '✅ Configured' : '❌ Missing'}`);
 console.log(`   FAL API: ${service.env.FAL_KEY ? '✅ Configured' : '❌ Missing'}`);
-console.log(`   OpenRouter API: ${service.env.OPENROUTER_API_KEY ? '✅ Configured' : '❌ Missing'}`);
+console.log(`   OpenRouter API: ${service.env.OPENROUTER_API_KEY ? '✅ Configured' : '❌ Missing (required for dev mode)'}`);
 console.log('');
-console.log('⚠️  Note: Using mock Raindrop bindings for local development');
-console.log('   - In-memory storage (data not persisted)');
-console.log('   - Raindrop AI unavailable (use LLM_PROVIDER=openrouter)');
+console.log('📱 Meta Ads (via Pipeboard):');
+console.log(`   Pipeboard Token: ${service.env.PIPEBOARD_API_TOKEN ? '✅ Configured' : '❌ Missing'}`);
+console.log(`   Ad Account: ${service.env.META_AD_ACCOUNT_ID ? '✅ Configured' : '❌ Missing'}`);
+console.log(`   Page ID: ${service.env.META_PAGE_ID ? '✅ Configured' : '❌ Missing'}`);
+const allMetaConfigured = service.env.PIPEBOARD_API_TOKEN && service.env.META_AD_ACCOUNT_ID && service.env.META_PAGE_ID;
+if (allMetaConfigured) {
+  console.log(`   Status: ✅ Ads will be deployed to Meta`);
+} else {
+  console.log(`   Status: ⚠️  Ads will be saved as drafts only`);
+}
+console.log('');
+console.log('ℹ️  Dev Mode Notes:');
+console.log('   - In-memory storage (data resets on server restart)');
+console.log('   - Raindrop AI calls forwarded to OpenRouter in dev');
+console.log('   - Set OPENROUTER_API_KEY in .env to enable AI features');
 console.log('');
 
 serve(
@@ -136,9 +246,13 @@ serve(
     fetch: service.fetch.bind(service),
     port,
   },
-  (info) => {
+  async (info) => {
     console.log(`✅ Server running at http://localhost:${info.port}`);
     console.log('');
+
+    // Seed database with sample products
+    await seedDatabase(service.env.AD_DATA, service.env.APP_CACHE);
+
     console.log('📚 Available endpoints:');
     console.log('   GET  /health - Health check');
     console.log('   GET  /internal/config - Configuration status');
@@ -147,6 +261,8 @@ serve(
     console.log('');
     console.log('   GET  /api/products - List products');
     console.log('   POST /api/products - Create product');
+    console.log('   POST /api/ai/generate-product - AI generate product');
+    console.log('   POST /api/ai/run-experiment - Run experiment');
     console.log('   GET  /api/experiments - List experiments');
     console.log('   GET  /api/landing/:productId - Get landing page');
     console.log('');

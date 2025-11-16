@@ -10,6 +10,9 @@ import type {
   Lead,
   UserProfile,
   BuildContract,
+  OptimizationConfig,
+  OptimizationStatus,
+  OptimizationResult,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
@@ -93,6 +96,24 @@ class ApiClient {
     return this.request<AdExperiment>(`/experiments/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
+    });
+  }
+
+  // Optimization
+  async getOptimizationStatus(experimentId: string): Promise<OptimizationStatus> {
+    return this.request<OptimizationStatus>(`/experiments/${experimentId}/optimization/status`);
+  }
+
+  async updateOptimizationConfig(experimentId: string, config: Partial<OptimizationConfig>): Promise<void> {
+    return this.request<void>(`/experiments/${experimentId}/optimization/config`, {
+      method: 'PATCH',
+      body: JSON.stringify(config),
+    });
+  }
+
+  async triggerOptimizationEvaluation(experimentId: string): Promise<OptimizationResult> {
+    return this.request<OptimizationResult>(`/experiments/${experimentId}/optimization/evaluate`, {
+      method: 'POST',
     });
   }
 

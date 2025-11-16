@@ -25,6 +25,17 @@ export interface ProductConcept {
   updated_at: string;
 }
 
+export interface OptimizationConfig {
+  enabled: boolean;
+  evaluation_interval_hours: number;
+  min_impressions_threshold: number;
+  cpl_multiplier: number;
+  min_leads_for_decision: number;
+  auto_relaunch: boolean;
+  max_variants_per_experiment: number;
+  pause_underperforming: boolean;
+}
+
 export interface AdExperiment {
   id: string;
   product_id: string;
@@ -36,6 +47,9 @@ export interface AdExperiment {
   target_cpl_threshold_usd: number;
   status: ExperimentStatus;
   round: number;
+  optimization_config?: OptimizationConfig;
+  last_optimization_at?: string;
+  next_optimization_at?: string;
   created_at: string;
   updated_at: string;
 }
@@ -57,6 +71,11 @@ export interface AdVariant {
   created_by: CreatedBy;
   created_at: string;
   updated_at: string;
+  meta_links?: {
+    ad_url?: string;
+    campaign_url?: string;
+    adset_url?: string;
+  };
 }
 
 export interface AdMetricsSnapshot {
@@ -154,4 +173,30 @@ export interface AdVariantWithMetrics extends AdVariant {
   total_spend_usd: number;
   avg_ctr: number;
   avg_cpl_usd: number;
+}
+
+// Optimization result tracking
+export interface OptimizationDecision {
+  ad_id: string;
+  headline: string;
+  action: 'keep' | 'pause' | 'launch';
+  reason: string;
+  metrics?: AdMetricsSnapshot;
+}
+
+export interface OptimizationResult {
+  experiment_id: string;
+  evaluated_at: string;
+  next_evaluation_at: string;
+  variants_evaluated: number;
+  variants_paused: number;
+  variants_launched: number;
+  decisions: OptimizationDecision[];
+}
+
+export interface OptimizationStatus {
+  config: OptimizationConfig;
+  last_optimization_at?: string;
+  next_optimization_at?: string;
+  time_until_next_ms?: number;
 }

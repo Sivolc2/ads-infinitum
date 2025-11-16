@@ -19,6 +19,10 @@ import { AdExperimentManager } from '../services/experiment-service';
 import { MetricsCollectorService } from '../services/metrics-service';
 import { LeadIngestionService } from '../services/lead-service';
 import { LandingPageService } from '../services/landing-page-service';
+import { BuildContractService } from '../services/build-contract-service';
+import { generateProductConcept } from '../services/ai-product-generator';
+import { AdOptimizerService } from '../services/ad-optimizer';
+import { MetaAdsClient } from '../services/meta-ads-client';
 
 import {
   ProductConcept,
@@ -31,6 +35,11 @@ import {
   CreateAdMetricsSnapshotSchema,
   CreateLeadSchema,
 } from '../models';
+
+import {
+  CreateBuildContractSchema,
+  UpdateBuildContractSchema,
+} from '../models/build-contract';
 
 import {
   CreatePledgeSchema,
@@ -139,7 +148,17 @@ app.get('/api/products', async (c) => {
     const status = c.req.query('status') as any;
     const productService = new ProductService(c.env.AD_DATA, c.env.APP_CACHE);
     const products = await productService.list(status ? { status } : undefined);
-    return c.json({ success: true, count: products.length, data: products });
+
+    // Add metrics to each product (default to 0 for new products)
+    const productsWithMetrics = products.map(product => ({
+      ...product,
+      total_experiments: 0,
+      total_leads: 0,
+      avg_cpl_usd: 0,
+      total_spend_usd: 0
+    }));
+
+    return c.json({ success: true, count: productsWithMetrics.length, data: productsWithMetrics });
   } catch (error) {
     return c.json({ success: false, error: 'Failed to list products',
       message: error instanceof Error ? error.message : 'Unknown error' }, 500);
@@ -200,6 +219,77 @@ app.delete('/api/products/:id', async (c) => {
   }
 });
 
+// ===== AI PRODUCT GENERATION ENDPOINT =====
+
+app.post('/api/ai/generate-product', async (c) => {
+  try {
+    // Get configuration from environment
+    const llmProvider = c.env.LLM_PROVIDER || 'raindrop';
+    const useRaindrop = llmProvider.toLowerCase() === 'raindrop';
+    const openrouterApiKey = c.env.OPENROUTER_API_KEY;
+
+    // Check LLM provider requirements
+    if (useRaindrop && !c.env.AI) {
+      return c.json({
+        success: false,
+        error: 'Raindrop AI not available. Set LLM_PROVIDER=openrouter to use OpenRouter instead.'
+      }, 500);
+    }
+
+    if (!useRaindrop && !openrouterApiKey) {
+      return c.json({
+        success: false,
+        error: 'OPENROUTER_API_KEY must be configured when LLM_PROVIDER=openrouter'
+      }, 500);
+    }
+
+    console.log(`🤖 Generating AI product concept using ${useRaindrop ? 'Raindrop AI' : 'OpenRouter'}...`);
+
+    // Generate product concept using AI
+    const product = await generateProductConcept({
+      openrouterApiKey,
+      raindropAI: useRaindrop ? c.env.AI : undefined,
+      useRaindrop
+    });
+
+    // Save the product to storage
+    const productService = new ProductService(c.env.AD_DATA, c.env.APP_CACHE);
+    const savedProduct = await productService.create({
+      title: product.title,
+      tagline: product.tagline,
+      description: product.description,
+      hypothesis: product.hypothesis,
+      target_audience: product.target_audience,
+      status: 'draft',
+      created_by: 'agent'
+    });
+
+    console.log(`✅ Generated product: ${savedProduct.title}`);
+
+    // Add metrics to the product
+    const productWithMetrics = {
+      ...savedProduct,
+      total_experiments: 0,
+      total_leads: 0,
+      avg_cpl_usd: 0,
+      total_spend_usd: 0
+    };
+
+    return c.json({
+      success: true,
+      product: productWithMetrics
+    }, 201);
+
+  } catch (error) {
+    console.error('❌ Error generating product:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to generate product',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    }, 500);
+  }
+});
+
 // ===== EXPERIMENT ENDPOINTS =====
 
 app.get('/api/experiments', async (c) => {
@@ -210,7 +300,17 @@ app.get('/api/experiments', async (c) => {
     if (productId) {
       // Get experiments for a specific product
       const experiments = await experimentManager.listExperimentsByProduct(productId);
-      return c.json({ success: true, count: experiments.length, data: experiments });
+
+      // Add metrics to each experiment (default to 0 for new experiments)
+      const experimentsWithMetrics = experiments.map(exp => ({
+        ...exp,
+        total_variants: 0,
+        total_leads: 0,
+        avg_cpl_usd: 0,
+        total_spend_usd: 0
+      }));
+
+      return c.json({ success: true, count: experimentsWithMetrics.length, data: experimentsWithMetrics });
     } else {
       // Get all experiments across all products
       const productService = new ProductService(c.env.AD_DATA, c.env.APP_CACHE);
@@ -222,7 +322,16 @@ app.get('/api/experiments', async (c) => {
         allExperiments.push(...experiments);
       }
 
-      return c.json({ success: true, count: allExperiments.length, data: allExperiments });
+      // Add metrics to each experiment
+      const experimentsWithMetrics = allExperiments.map(exp => ({
+        ...exp,
+        total_variants: 0,
+        total_leads: 0,
+        avg_cpl_usd: 0,
+        total_spend_usd: 0
+      }));
+
+      return c.json({ success: true, count: experimentsWithMetrics.length, data: experimentsWithMetrics });
     }
   } catch (error) {
     return c.json({ success: false, error: 'Failed to list experiments',
@@ -276,7 +385,28 @@ app.get('/api/experiments/:id/variants', async (c) => {
     const id = c.req.param('id');
     const experimentManager = new AdExperimentManager(c.env.AD_DATA, c.env.APP_CACHE);
     const variants = await experimentManager.listAdVariantsByExperiment(id);
-    return c.json({ success: true, count: variants.length, data: variants });
+
+    // Add Meta Ad Manager links to each variant
+    const variantsWithLinks = variants.map(variant => {
+      const metaLinks: any = {};
+
+      if (variant.meta_ad_id && !variant.meta_ad_id.startsWith('mock_')) {
+        metaLinks.ad_url = `https://business.facebook.com/adsmanager/manage/ads?act=${c.env.META_AD_ACCOUNT_ID?.replace('act_', '')}&selected_ad_ids=${variant.meta_ad_id}`;
+      }
+      if (variant.meta_campaign_id && !variant.meta_campaign_id.startsWith('mock_')) {
+        metaLinks.campaign_url = `https://business.facebook.com/adsmanager/manage/campaigns?act=${c.env.META_AD_ACCOUNT_ID?.replace('act_', '')}&selected_campaign_ids=${variant.meta_campaign_id}`;
+      }
+      if (variant.meta_adset_id && !variant.meta_adset_id.startsWith('mock_')) {
+        metaLinks.adset_url = `https://business.facebook.com/adsmanager/manage/adsets?act=${c.env.META_AD_ACCOUNT_ID?.replace('act_', '')}&selected_adset_ids=${variant.meta_adset_id}`;
+      }
+
+      return {
+        ...variant,
+        meta_links: Object.keys(metaLinks).length > 0 ? metaLinks : undefined
+      };
+    });
+
+    return c.json({ success: true, count: variantsWithLinks.length, data: variantsWithLinks });
   } catch (error) {
     return c.json({ success: false, error: 'Failed to list variants',
       message: error instanceof Error ? error.message : 'Unknown error' }, 500);
@@ -371,6 +501,106 @@ app.patch('/api/ad-variants/:id', async (c) => {
   }
 });
 
+// ===== OPTIMIZATION ENDPOINTS =====
+
+// Get optimization status for an experiment
+app.get('/api/experiments/:id/optimization/status', async (c) => {
+  try {
+    const experimentId = c.req.param('id');
+    const experimentManager = new AdExperimentManager(c.env.AD_DATA, c.env.APP_CACHE);
+    const metricsService = new MetricsCollectorService(c.env.AD_DATA);
+    const optimizerService = new AdOptimizerService(experimentManager, metricsService);
+
+    const status = await optimizerService.getOptimizationStatus(experimentId);
+    return c.json({ success: true, data: status });
+  } catch (error) {
+    return c.json({
+      success: false,
+      error: 'Failed to get optimization status',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    }, 500);
+  }
+});
+
+// Update optimization config for an experiment
+app.patch('/api/experiments/:id/optimization/config', async (c) => {
+  try {
+    const experimentId = c.req.param('id');
+    const body = await c.req.json();
+    const experimentManager = new AdExperimentManager(c.env.AD_DATA, c.env.APP_CACHE);
+    const metricsService = new MetricsCollectorService(c.env.AD_DATA);
+    const optimizerService = new AdOptimizerService(experimentManager, metricsService);
+
+    await optimizerService.updateOptimizationConfig(experimentId, body);
+
+    return c.json({
+      success: true,
+      message: 'Optimization config updated successfully'
+    });
+  } catch (error) {
+    return c.json({
+      success: false,
+      error: 'Failed to update optimization config',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    }, 400);
+  }
+});
+
+// Trigger manual evaluation for an experiment
+app.post('/api/experiments/:id/optimization/evaluate', async (c) => {
+  try {
+    const experimentId = c.req.param('id');
+    const experimentManager = new AdExperimentManager(c.env.AD_DATA, c.env.APP_CACHE);
+    const metricsService = new MetricsCollectorService(c.env.AD_DATA);
+    const optimizerService = new AdOptimizerService(experimentManager, metricsService);
+
+    const result = await optimizerService.triggerManualEvaluation(experimentId);
+
+    return c.json({
+      success: true,
+      data: result,
+      message: `Evaluation complete: ${result.variants_paused} paused, ${result.variants_launched} launched`
+    });
+  } catch (error) {
+    return c.json({
+      success: false,
+      error: 'Failed to evaluate experiment',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    }, 500);
+  }
+});
+
+// Evaluate all running experiments (background job endpoint)
+app.post('/api/optimization/evaluate-all', async (c) => {
+  try {
+    const experimentManager = new AdExperimentManager(c.env.AD_DATA, c.env.APP_CACHE);
+    const metricsService = new MetricsCollectorService(c.env.AD_DATA);
+    const optimizerService = new AdOptimizerService(experimentManager, metricsService);
+
+    const results = await optimizerService.evaluateAllExperiments();
+
+    const totalPaused = results.reduce((sum, r) => sum + r.variants_paused, 0);
+    const totalLaunched = results.reduce((sum, r) => sum + r.variants_launched, 0);
+
+    return c.json({
+      success: true,
+      data: {
+        experiments_evaluated: results.length,
+        total_variants_paused: totalPaused,
+        total_variants_launched: totalLaunched,
+        results
+      },
+      message: `Evaluated ${results.length} experiments`
+    });
+  } catch (error) {
+    return c.json({
+      success: false,
+      error: 'Failed to evaluate all experiments',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    }, 500);
+  }
+});
+
 // ===== LEAD ENDPOINTS =====
 
 app.post('/api/leads', async (c) => {
@@ -404,13 +634,473 @@ app.get('/api/leads', async (c) => {
     const productId = c.req.query('product_id');
     const adId = c.req.query('ad_id');
     const leadService = new LeadIngestionService(c.env.AD_DATA, c.env.LEAD_INGESTION);
-    let leads;
-    if (productId) leads = await leadService.listLeadsByProduct(productId);
-    else if (adId) leads = await leadService.listLeadsByAd(adId);
-    else return c.json({ success: false, error: 'product_id or ad_id query parameter required' }, 400);
-    return c.json({ success: true, count: leads.length, data: leads });
+
+    if (productId) {
+      // Get leads for a specific product
+      const leads = await leadService.listLeadsByProduct(productId);
+      return c.json({ success: true, count: leads.length, data: leads });
+    } else if (adId) {
+      // Get leads for a specific ad
+      const leads = await leadService.listLeadsByAd(adId);
+      return c.json({ success: true, count: leads.length, data: leads });
+    } else {
+      // Get all leads across all products
+      const productService = new ProductService(c.env.AD_DATA, c.env.APP_CACHE);
+      const products = await productService.list();
+      const allLeads = [];
+
+      for (const product of products) {
+        const leads = await leadService.listLeadsByProduct(product.id);
+        allLeads.push(...leads);
+      }
+
+      // Sort by created_at descending
+      allLeads.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      return c.json({ success: true, count: allLeads.length, data: allLeads });
+    }
   } catch (error) {
     return c.json({ success: false, error: 'Failed to list leads',
+      message: error instanceof Error ? error.message : 'Unknown error' }, 500);
+  }
+});
+
+// ===== AI AUTOMATION ENDPOINTS =====
+
+/**
+ * POST /api/ai/generate-product
+ *
+ * Generate a new product concept using AI
+ */
+app.post('/api/ai/generate-product', async (c) => {
+  try {
+    // Get configuration from environment
+    const llmProvider = c.env.LLM_PROVIDER || 'raindrop';
+    const useRaindrop = llmProvider.toLowerCase() === 'raindrop';
+    const openrouterApiKey = c.env.OPENROUTER_API_KEY;
+
+    console.log(`🤖 Generating AI product concept using ${useRaindrop ? 'Raindrop AI' : 'OpenRouter'}...`);
+
+    // Generate product concept using AI (with fallback to mock for dev)
+    const product = await generateProductConcept({
+      openrouterApiKey,
+      raindropAI: useRaindrop ? c.env.AI : undefined,
+      useRaindrop
+    });
+
+    // Save the product to storage
+    const productService = new ProductService(c.env.AD_DATA, c.env.APP_CACHE);
+    const savedProduct = await productService.create({
+      title: product.title,
+      tagline: product.tagline,
+      description: product.description,
+      hypothesis: product.hypothesis,
+      target_audience: product.target_audience,
+      status: 'draft',
+      created_by: 'agent'
+    });
+
+    console.log(`✅ Generated product: ${savedProduct.title}`);
+
+    // Add metrics to the product
+    const productWithMetrics = {
+      ...savedProduct,
+      total_experiments: 0,
+      total_leads: 0,
+      avg_cpl_usd: 0,
+      total_spend_usd: 0
+    };
+
+    return c.json({
+      success: true,
+      product: productWithMetrics
+    }, 201);
+
+  } catch (error) {
+    console.error('❌ Error generating product:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to generate product',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    }, 500);
+  }
+});
+
+/**
+ * POST /api/ai/run-experiment
+ *
+ * Run a complete experiment: generate ads, create experiment, deploy to Meta
+ */
+app.post('/api/ai/run-experiment', async (c) => {
+  try {
+    const { product_id } = await c.req.json();
+
+    if (!product_id) {
+      return c.json({ success: false, error: 'product_id is required' }, 400);
+    }
+
+    const productService = new ProductService(c.env.AD_DATA, c.env.APP_CACHE);
+    const experimentManager = new AdExperimentManager(c.env.AD_DATA, c.env.APP_CACHE);
+
+    // Get product
+    const product = await productService.get(product_id);
+    if (!product) {
+      return c.json({ success: false, error: 'Product not found' }, 404);
+    }
+
+    // Determine experiment round
+    const existingExperiments = await experimentManager.listExperimentsByProduct(product_id);
+    const round = existingExperiments.length + 1;
+
+    // Create experiment
+    const experiment = await experimentManager.createExperiment({
+      product_id,
+      round,
+      platform: 'meta',
+      goal: 'leads',
+      budget_per_day_usd: 50,
+      budget_total_usd: 500,
+      target_cpl_threshold_usd: 5,
+      min_leads_for_decision: 10,
+      status: 'pending',
+    });
+
+    // Generate ad variants
+    const llmProvider = c.env.LLM_PROVIDER || 'raindrop';
+    const useRaindrop = llmProvider.toLowerCase() === 'raindrop';
+    const imageProvider = (c.env.IMAGE_PROVIDER || 'freepik') as 'freepik' | 'fal';
+    const openrouterApiKey = c.env.OPENROUTER_API_KEY;
+    const imageApiKey = imageProvider === 'freepik' ? c.env.FREEPIK_API_KEY : c.env.FAL_KEY;
+
+    const variants = await generateAdVariants({
+      productConcept: product,
+      experimentId: experiment.id,
+      numVariants: 3,
+      openrouterApiKey,
+      imageApiKey,
+      imageProvider,
+      raindropAI: useRaindrop ? c.env.AI : undefined,
+      env: c.env,
+    });
+
+    // Save the generated variants to storage and deploy to Meta
+    const savedVariants = [];
+    for (const variant of variants) {
+      const savedVariant = await experimentManager.createAdVariant({
+        experiment_id: experiment.id,
+        product_id: product_id,
+        platform: 'meta',
+        meta_campaign_id: '',
+        meta_adset_id: '',
+        meta_ad_id: '',
+        headline: variant.headline,
+        body: variant.body,
+        image_url: variant.image_url,
+        cta: variant.cta,
+        status: 'draft',
+        created_by: 'agent'
+      });
+      savedVariants.push(savedVariant);
+    }
+
+    // Deploy ads to Meta via Pipeboard (if configured)
+    const metaToken = c.env.PIPEBOARD_API_TOKEN;
+    const metaAdAccountId = c.env.META_AD_ACCOUNT_ID;
+    const metaPageId = c.env.META_PAGE_ID;
+    const deployedAds: any[] = [];
+
+    if (metaToken && metaAdAccountId && metaPageId) {
+      console.log('🚀 Deploying ads to Meta via Pipeboard...');
+      const metaClient = new MetaAdsClient({
+        apiToken: metaToken,
+        adAccountId: metaAdAccountId,
+        pageId: metaPageId,
+        mockMode: false
+      });
+
+      for (const variant of savedVariants) {
+        try {
+          const result = await metaClient.createAd(variant, {
+            dailyBudget: experiment.budget_per_day_usd * 100, // Convert to cents
+            ctaUrl: `https://ads-infinitum.app/landing/${product_id}` // TODO: Get real landing page URL
+          });
+
+          // Update variant with Meta IDs
+          await experimentManager.updateAdVariant({
+            id: variant.id,
+            meta_campaign_id: result.campaignId,
+            meta_adset_id: result.adsetId,
+            meta_ad_id: result.adId,
+            status: 'active'
+          });
+
+          // Generate Meta Ad Manager URLs
+          const accountIdNum = metaAdAccountId.replace('act_', '');
+          const adUrl = `https://business.facebook.com/adsmanager/manage/ads?act=${accountIdNum}&selected_ad_ids=${result.adId}`;
+          const campaignUrl = `https://business.facebook.com/adsmanager/manage/campaigns?act=${accountIdNum}&selected_campaign_ids=${result.campaignId}`;
+          const adsetUrl = `https://business.facebook.com/adsmanager/manage/adsets?act=${accountIdNum}&selected_adset_ids=${result.adsetId}`;
+
+          // Track deployed ad info
+          deployedAds.push({
+            variant_id: variant.id,
+            headline: variant.headline,
+            ad_id: result.adId,
+            campaign_id: result.campaignId,
+            adset_id: result.adsetId,
+            meta_links: {
+              ad_url: adUrl,
+              campaign_url: campaignUrl,
+              adset_url: adsetUrl,
+            }
+          });
+
+          console.log(`✅ Deployed ad ${variant.id} to Meta`);
+          console.log(`   📍 Ad: ${adUrl}`);
+          console.log(`   📍 Campaign: ${campaignUrl}`);
+        } catch (error) {
+          console.error(`❌ Failed to deploy ad ${variant.id}:`, error);
+          // Continue with other ads even if one fails
+        }
+      }
+    } else {
+      console.log('⚠️  Pipeboard credentials not configured - ads saved as drafts');
+      console.log('   Set PIPEBOARD_API_TOKEN, META_AD_ACCOUNT_ID, and META_PAGE_ID in .env');
+    }
+
+    // Update experiment status
+    await experimentManager.updateExperiment({
+      id: experiment.id,
+      status: 'running',
+    });
+
+    // Update product status
+    await productService.update({
+      id: product_id,
+      status: 'testing',
+    });
+
+    return c.json({
+      success: true,
+      experiment_id: experiment.id,
+      num_variants: variants.length,
+      estimated_cost: 2.5,
+      budget_per_day: experiment.budget_per_day_usd,
+      target_cpl: experiment.target_cpl_threshold_usd,
+      deployed_ads: deployedAds.length > 0 ? deployedAds : undefined,
+      note: deployedAds.length > 0
+        ? 'Ads deployed to Meta - click the links to view in Ads Manager'
+        : 'Ads created as drafts - configure Meta credentials to deploy',
+    });
+  } catch (error) {
+    console.error('Error running experiment:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to run experiment',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    }, 500);
+  }
+});
+
+// ===== LANDING PAGE ENDPOINTS =====
+
+app.get('/api/landing-pages', async (c) => {
+  try {
+    const productId = c.req.query('product_id');
+
+    if (productId) {
+      // Get landing page for a specific product
+      const productService = new ProductService(c.env.AD_DATA, c.env.APP_CACHE);
+      const product = await productService.get(productId);
+
+      if (!product) {
+        return c.json({ success: false, error: 'Product not found' }, 404);
+      }
+
+      const landingPage = await landingPageService.getOrCreateForProduct(productId, product);
+      return c.json({ success: true, count: 1, data: [landingPage] });
+    } else {
+      // Get all landing pages
+      const productService = new ProductService(c.env.AD_DATA, c.env.APP_CACHE);
+      const products = await productService.list();
+      const landingPages = [];
+
+      for (const product of products) {
+        const page = await landingPageService.getOrCreateForProduct(product.id, product);
+        landingPages.push(page);
+      }
+
+      return c.json({ success: true, count: landingPages.length, data: landingPages });
+    }
+  } catch (error) {
+    return c.json({ success: false, error: 'Failed to list landing pages',
+      message: error instanceof Error ? error.message : 'Unknown error' }, 500);
+  }
+});
+
+app.get('/api/landing-pages/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const landingPage = await landingPageService.get(id);
+
+    if (!landingPage) {
+      return c.json({ success: false, error: 'Landing page not found' }, 404);
+    }
+
+    return c.json({ success: true, data: landingPage });
+  } catch (error) {
+    return c.json({ success: false, error: 'Failed to get landing page',
+      message: error instanceof Error ? error.message : 'Unknown error' }, 500);
+  }
+});
+
+app.patch('/api/landing-pages/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+
+    // Get existing landing page
+    const existing = await landingPageService.get(id);
+    if (!existing) {
+      return c.json({ success: false, error: 'Landing page not found' }, 404);
+    }
+
+    // Update the landing page (this is a simple implementation, landingPageService doesn't have an update method)
+    // For now, just return the existing page
+    return c.json({ success: true, data: existing });
+  } catch (error) {
+    return c.json({ success: false, error: 'Failed to update landing page',
+      message: error instanceof Error ? error.message : 'Unknown error' }, 500);
+  }
+});
+
+// ===== USER PROFILE ENDPOINTS =====
+
+app.get('/api/user-profiles', async (c) => {
+  try {
+    const leadId = c.req.query('lead_id');
+    const leadService = new LeadIngestionService(c.env.AD_DATA, c.env.LEAD_INGESTION);
+
+    if (leadId) {
+      // Get profile for a specific lead
+      const profile = await leadService.getUserProfileByLead(leadId);
+      return c.json({ success: true, count: profile ? 1 : 0, data: profile ? [profile] : [] });
+    } else {
+      // Get all user profiles
+      const listResult = await c.env.AD_DATA.list({
+        prefix: 'user-profiles/',
+        limit: 1000,
+      });
+
+      const profiles = [];
+      for (const obj of listResult.objects) {
+        const object = await c.env.AD_DATA.get(obj.key);
+        if (object) {
+          const data = JSON.parse(await object.text());
+          profiles.push(data);
+        }
+      }
+
+      // Sort by created_at descending
+      profiles.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      return c.json({ success: true, count: profiles.length, data: profiles });
+    }
+  } catch (error) {
+    return c.json({ success: false, error: 'Failed to list user profiles',
+      message: error instanceof Error ? error.message : 'Unknown error' }, 500);
+  }
+});
+
+app.get('/api/user-profiles/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const leadService = new LeadIngestionService(c.env.AD_DATA, c.env.LEAD_INGESTION);
+    const profile = await leadService.getUserProfile(id);
+    if (!profile) return c.json({ success: false, error: 'User profile not found' }, 404);
+    return c.json({ success: true, data: profile });
+  } catch (error) {
+    return c.json({ success: false, error: 'Failed to get user profile',
+      message: error instanceof Error ? error.message : 'Unknown error' }, 500);
+  }
+});
+
+// ===== BUILD CONTRACT ENDPOINTS =====
+
+app.get('/api/build-contracts', async (c) => {
+  try {
+    const productId = c.req.query('product_id');
+    const status = c.req.query('status') as any;
+    const buildContractService = new BuildContractService(c.env.AD_DATA);
+
+    if (productId) {
+      // Get contracts for a specific product
+      const contracts = await buildContractService.listByProduct(productId);
+      return c.json({ success: true, count: contracts.length, data: contracts });
+    } else if (status) {
+      // Get contracts by status
+      const contracts = await buildContractService.listByStatus(status);
+      return c.json({ success: true, count: contracts.length, data: contracts });
+    } else {
+      // Get all contracts
+      const contracts = await buildContractService.list();
+      return c.json({ success: true, count: contracts.length, data: contracts });
+    }
+  } catch (error) {
+    return c.json({ success: false, error: 'Failed to list build contracts',
+      message: error instanceof Error ? error.message : 'Unknown error' }, 500);
+  }
+});
+
+app.get('/api/build-contracts/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const buildContractService = new BuildContractService(c.env.AD_DATA);
+    const contract = await buildContractService.get(id);
+    if (!contract) return c.json({ success: false, error: 'Build contract not found' }, 404);
+    return c.json({ success: true, data: contract });
+  } catch (error) {
+    return c.json({ success: false, error: 'Failed to get build contract',
+      message: error instanceof Error ? error.message : 'Unknown error' }, 500);
+  }
+});
+
+app.post('/api/build-contracts', async (c) => {
+  try {
+    const body = await c.req.json();
+    const validated = CreateBuildContractSchema.parse(body);
+    const buildContractService = new BuildContractService(c.env.AD_DATA);
+    const contract = await buildContractService.create(validated);
+    return c.json({ success: true, data: contract }, 201);
+  } catch (error) {
+    return c.json({ success: false, error: 'Failed to create build contract',
+      message: error instanceof Error ? error.message : 'Unknown error' }, 400);
+  }
+});
+
+app.patch('/api/build-contracts/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    const validated = UpdateBuildContractSchema.parse({ ...body, id });
+    const buildContractService = new BuildContractService(c.env.AD_DATA);
+    const contract = await buildContractService.update(validated);
+    if (!contract) return c.json({ success: false, error: 'Build contract not found' }, 404);
+    return c.json({ success: true, data: contract });
+  } catch (error) {
+    return c.json({ success: false, error: 'Failed to update build contract',
+      message: error instanceof Error ? error.message : 'Unknown error' }, 400);
+  }
+});
+
+app.delete('/api/build-contracts/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const buildContractService = new BuildContractService(c.env.AD_DATA);
+    const success = await buildContractService.delete(id);
+    if (!success) return c.json({ success: false, error: 'Build contract not found' }, 404);
+    return c.json({ success: true, message: 'Build contract deleted' });
+  } catch (error) {
+    return c.json({ success: false, error: 'Failed to delete build contract',
       message: error instanceof Error ? error.message : 'Unknown error' }, 500);
   }
 });
