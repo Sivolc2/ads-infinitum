@@ -218,7 +218,7 @@ const port = parseInt(process.env.PORT || '8787');
 
 console.log('🚀 Starting Ad Infinitum Backend (Dev Mode)...\n');
 console.log('📊 Configuration:');
-console.log(`   LLM Provider: ${service.env.LLM_PROVIDER} (Raindrop AI → OpenRouter fallback in dev)`);
+console.log(`   LLM Provider: ${service.env.LLM_PROVIDER}`);
 console.log(`   Image Provider: ${service.env.IMAGE_PROVIDER}`);
 console.log(`   Freepik API: ${service.env.FREEPIK_API_KEY ? '✅ Configured' : '❌ Missing'}`);
 console.log(`   FAL API: ${service.env.FAL_KEY ? '✅ Configured' : '❌ Missing'}`);

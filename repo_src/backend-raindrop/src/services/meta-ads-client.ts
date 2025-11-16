@@ -216,6 +216,15 @@ export class MetaAdsClient {
   // --------------------------------------------------------------------------
 
   private async uploadAdImage(imageUrl: string, filename: string): Promise<string> {
+    // If imageUrl is a data URL, extract and upload the base64 data directly
+    if (imageUrl.startsWith('data:')) {
+      const base64Match = imageUrl.match(/^data:image\/\w+;base64,(.+)$/);
+      if (base64Match) {
+        console.log('[Meta] Detected data URL, uploading base64 directly...');
+        return this.uploadAdImageFromBase64(base64Match[1], filename);
+      }
+    }
+
     const result = await this.callMCPTool('upload_ad_image', {
       account_id: this.config.adAccountId,
       image_url: imageUrl,
@@ -223,10 +232,49 @@ export class MetaAdsClient {
     });
 
     // Extract hash from response
+    let hash: string | undefined;
     if (result.images?.bytes?.hash) {
-      return result.images.bytes.hash;
+      hash = result.images.bytes.hash;
+    } else if (result.hash) {
+      hash = result.hash;
+    } else if (result.image_hash) {
+      hash = result.image_hash;
     }
-    return result.hash ?? result.image_hash;
+
+    if (!hash) {
+      console.error('[Meta] ❌ Failed to extract image hash from response:', JSON.stringify(result));
+      throw new Error('Image upload succeeded but no hash returned');
+    }
+
+    console.log(`[Meta] ✅ Image uploaded successfully (hash: ${hash.substring(0, 16)}...)`);
+    return hash;
+  }
+
+  private async uploadAdImageFromBase64(base64Data: string, filename: string): Promise<string> {
+    // Upload using file parameter with base64 data
+    const result = await this.callMCPTool('upload_ad_image', {
+      account_id: this.config.adAccountId,
+      file: base64Data,
+      filename,
+    });
+
+    // Extract hash from response
+    let hash: string | undefined;
+    if (result.images?.bytes?.hash) {
+      hash = result.images.bytes.hash;
+    } else if (result.hash) {
+      hash = result.hash;
+    } else if (result.image_hash) {
+      hash = result.image_hash;
+    }
+
+    if (!hash) {
+      console.error('[Meta] ❌ Failed to extract image hash from base64 upload:', JSON.stringify(result));
+      throw new Error('Base64 image upload succeeded but no hash returned');
+    }
+
+    console.log(`[Meta] ✅ Image uploaded from base64 successfully (hash: ${hash.substring(0, 16)}...)`);
+    return hash;
   }
 
   private async createCampaign(
@@ -241,9 +289,16 @@ export class MetaAdsClient {
       status,
       special_ad_categories: ['NONE'],
       buying_type: 'AUCTION',
+      // No budget at campaign level - using ad set budgets instead
     });
 
-    return result.id ?? result.campaign_id;
+    const campaignId = result.id ?? result.campaign_id;
+    if (!campaignId) {
+      console.error('[Meta] ❌ Failed to extract campaign ID from response:', JSON.stringify(result));
+      throw new Error('Campaign creation succeeded but no ID returned');
+    }
+    console.log(`[Meta] ✅ Campaign created (ID: ${campaignId})`);
+    return campaignId;
   }
 
   private async createAdset(
@@ -266,13 +321,20 @@ export class MetaAdsClient {
       daily_budget: dailyBudget,
       billing_event: 'IMPRESSIONS',
       optimization_goal: 'LEAD_GENERATION',
-      bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+      bid_strategy: 'LOWEST_COST_WITH_BID_CAP',
+      bid_amount: 100, // $1.00 bid cap in cents
       start_time: start,
       end_time: end,
       targeting,
     });
 
-    return result.id ?? result.adset_id;
+    const adsetId = result.id ?? result.adset_id;
+    if (!adsetId) {
+      console.error('[Meta] ❌ Failed to extract adset ID from response:', JSON.stringify(result));
+      throw new Error('Adset creation succeeded but no ID returned');
+    }
+    console.log(`[Meta] ✅ Adset created (ID: ${adsetId})`);
+    return adsetId;
   }
 
   private async createAdCreative(
@@ -288,13 +350,14 @@ export class MetaAdsClient {
     const result = await this.callMCPTool('create_ad_creative', {
       account_id: this.config.adAccountId,
       name,
+      image_hash: imageHash,  // Top-level for MCP validation
       object_story_spec: {
         page_id: pageId,
         link_data: {
           message,
           name: headline,
           link,
-          image_hash: imageHash,
+          image_hash: imageHash,  // Nested for Meta API
           call_to_action: {
             type: callToActionType,
             value: { link },
@@ -304,7 +367,13 @@ export class MetaAdsClient {
       status,
     });
 
-    return result.id ?? result.creative_id;
+    const creativeId = result.id ?? result.creative_id;
+    if (!creativeId) {
+      console.error('[Meta] ❌ Failed to extract creative ID from response:', JSON.stringify(result));
+      throw new Error('Creative creation succeeded but no ID returned');
+    }
+    console.log(`[Meta] ✅ Creative created (ID: ${creativeId})`);
+    return creativeId;
   }
 
   private async createAdFromCreative(
@@ -313,15 +382,22 @@ export class MetaAdsClient {
     name: string,
     status: 'PAUSED' | 'ACTIVE' = 'PAUSED'
   ): Promise<string> {
+    console.log(`[Meta] 🔧 Creating ad with adset_id=${adsetId}, creative_id=${creativeId}`);
     const result = await this.callMCPTool('create_ad', {
       account_id: this.config.adAccountId,
       adset_id: adsetId,
+      creative_id: creativeId,
       name,
-      creative: { creative_id: creativeId },
       status,
     });
 
-    return result.id ?? result.ad_id;
+    const adId = result.id ?? result.ad_id;
+    if (!adId) {
+      console.error('[Meta] ❌ Failed to extract ad ID from response:', JSON.stringify(result));
+      throw new Error('Ad creation succeeded but no ID returned');
+    }
+    console.log(`[Meta] ✅ Ad created (ID: ${adId})`);
+    return adId;
   }
 
   private async getInsights(
@@ -444,7 +520,7 @@ export class MetaAdsClient {
       geo_locations: { countries: ['US', 'CA'] },
       publisher_platforms: ['facebook', 'instagram'],
       facebook_positions: ['feed', 'marketplace'],
-      instagram_positions: ['feed', 'story', 'reels'],
+      instagram_positions: ['stream', 'story', 'reels'],  // 'stream' not 'feed' for Instagram
     };
   }
 
