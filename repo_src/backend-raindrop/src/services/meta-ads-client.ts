@@ -105,7 +105,8 @@ export class MetaAdsClient {
       const campaignId = await this.createCampaign(
         `Campaign: ${variant.product_id}`,
         'OUTCOME_LEADS',
-        'PAUSED' // Always start paused for safety
+        'PAUSED', // Always start paused for safety
+        dailyBudget
       );
 
       // Step 3: Create ad set
@@ -280,7 +281,8 @@ export class MetaAdsClient {
   private async createCampaign(
     name: string,
     objective: string = 'OUTCOME_LEADS',
-    status: 'PAUSED' | 'ACTIVE' = 'PAUSED'
+    status: 'PAUSED' | 'ACTIVE' = 'PAUSED',
+    dailyBudget?: number,
   ): Promise<string> {
     const result = await this.callMCPTool('create_campaign', {
       account_id: this.config.adAccountId,
@@ -289,7 +291,7 @@ export class MetaAdsClient {
       status,
       special_ad_categories: ['NONE'],
       buying_type: 'AUCTION',
-      // No budget at campaign level - using ad set budgets instead
+      ...(dailyBudget ? { daily_budget: dailyBudget } : {}),
     });
 
     const campaignId = result.id ?? result.campaign_id;
@@ -313,22 +315,30 @@ export class MetaAdsClient {
     const start = startTime ?? this.getTomorrowISO();
     const end = endTime ?? this.getDaysFromNowISO(4);
 
-    const result = await this.callMCPTool('create_adset', {
+    const adsetPayload = {
       account_id: this.config.adAccountId,
       campaign_id: campaignId,
       name,
       status,
-      daily_budget: dailyBudget,
       billing_event: 'IMPRESSIONS',
       optimization_goal: 'LEAD_GENERATION',
-      // Use lowest-cost automatic bidding so Meta doesn't require bid_amount.
-      bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+      bid_strategy: 'LOWEST_COST_WITH_BID_CAP',
+      bid_amount: this.calculateDefaultBidAmount(dailyBudget),
       start_time: start,
       end_time: end,
       targeting,
+      promoted_object: {
+        page_id: this.config.pageId,
+      },
+    };
+
+    console.log('[Meta] create_adset payload:', {
+      ...adsetPayload,
+      account_id: '[redacted]',
     });
 
-    const adsetId = result.id ?? result.adset_id;
+    const result = await this.callMCPTool('create_adset', adsetPayload);
+    const adsetId = this.extractAdsetId(result);
     if (!adsetId) {
       console.error('[Meta] ❌ Failed to extract adset ID from response:', JSON.stringify(result));
       throw new Error('Adset creation succeeded but no ID returned');
@@ -566,6 +576,38 @@ export class MetaAdsClient {
     };
 
     return mapping[cta] ?? 'LEARN_MORE';
+  }
+
+  private extractAdsetId(result: any): string | undefined {
+    if (!result || typeof result !== 'object') {
+      return undefined;
+    }
+    if (typeof result.id === 'string') {
+      return result.id;
+    }
+    if (typeof result.adset_id === 'string') {
+      return result.adset_id;
+    }
+    if (typeof result.data === 'string') {
+      try {
+        const parsed = JSON.parse(result.data);
+        if (parsed?.id) {
+          return parsed.id;
+        }
+        if (parsed?.adset_id) {
+          return parsed.adset_id;
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
+    return undefined;
+  }
+
+  private calculateDefaultBidAmount(dailyBudget: number): number {
+    const minimumBid = 100; // $1.00 in cents
+    const tenPercent = Math.floor(dailyBudget * 0.1);
+    return Math.max(tenPercent, minimumBid);
   }
 
   // --------------------------------------------------------------------------
