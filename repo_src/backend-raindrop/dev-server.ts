@@ -20,7 +20,8 @@ class MockService {
       FREEPIK_API_KEY: process.env.FREEPIK_API_KEY,
       FAL_KEY: process.env.FAL_KEY,
 
-      // Meta Ads
+      // Meta Ads via Pipeboard
+      PIPEBOARD_API_TOKEN: process.env.PIPEBOARD_API_TOKEN,
       META_AD_ACCOUNT_ID: process.env.META_AD_ACCOUNT_ID,
       META_PAGE_ID: process.env.META_PAGE_ID,
 
@@ -222,6 +223,17 @@ console.log(`   Image Provider: ${service.env.IMAGE_PROVIDER}`);
 console.log(`   Freepik API: ${service.env.FREEPIK_API_KEY ? '✅ Configured' : '❌ Missing'}`);
 console.log(`   FAL API: ${service.env.FAL_KEY ? '✅ Configured' : '❌ Missing'}`);
 console.log(`   OpenRouter API: ${service.env.OPENROUTER_API_KEY ? '✅ Configured' : '❌ Missing (required for dev mode)'}`);
+console.log('');
+console.log('📱 Meta Ads (via Pipeboard):');
+console.log(`   Pipeboard Token: ${service.env.PIPEBOARD_API_TOKEN ? '✅ Configured' : '❌ Missing'}`);
+console.log(`   Ad Account: ${service.env.META_AD_ACCOUNT_ID ? '✅ Configured' : '❌ Missing'}`);
+console.log(`   Page ID: ${service.env.META_PAGE_ID ? '✅ Configured' : '❌ Missing'}`);
+const allMetaConfigured = service.env.PIPEBOARD_API_TOKEN && service.env.META_AD_ACCOUNT_ID && service.env.META_PAGE_ID;
+if (allMetaConfigured) {
+  console.log(`   Status: ✅ Ads will be deployed to Meta`);
+} else {
+  console.log(`   Status: ⚠️  Ads will be saved as drafts only`);
+}
 console.log('');
 console.log('ℹ️  Dev Mode Notes:');
 console.log('   - In-memory storage (data resets on server restart)');

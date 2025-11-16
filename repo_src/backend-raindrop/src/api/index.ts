@@ -21,6 +21,8 @@ import { LeadIngestionService } from '../services/lead-service';
 import { LandingPageService } from '../services/landing-page-service';
 import { BuildContractService } from '../services/build-contract-service';
 import { generateProductConcept } from '../services/ai-product-generator';
+import { AdOptimizerService } from '../services/ad-optimizer';
+import { MetaAdsClient } from '../services/meta-ads-client';
 
 import {
   ProductConcept,
@@ -298,7 +300,17 @@ app.get('/api/experiments', async (c) => {
     if (productId) {
       // Get experiments for a specific product
       const experiments = await experimentManager.listExperimentsByProduct(productId);
-      return c.json({ success: true, count: experiments.length, data: experiments });
+
+      // Add metrics to each experiment (default to 0 for new experiments)
+      const experimentsWithMetrics = experiments.map(exp => ({
+        ...exp,
+        total_variants: 0,
+        total_leads: 0,
+        avg_cpl_usd: 0,
+        total_spend_usd: 0
+      }));
+
+      return c.json({ success: true, count: experimentsWithMetrics.length, data: experimentsWithMetrics });
     } else {
       // Get all experiments across all products
       const productService = new ProductService(c.env.AD_DATA, c.env.APP_CACHE);
@@ -310,7 +322,16 @@ app.get('/api/experiments', async (c) => {
         allExperiments.push(...experiments);
       }
 
-      return c.json({ success: true, count: allExperiments.length, data: allExperiments });
+      // Add metrics to each experiment
+      const experimentsWithMetrics = allExperiments.map(exp => ({
+        ...exp,
+        total_variants: 0,
+        total_leads: 0,
+        avg_cpl_usd: 0,
+        total_spend_usd: 0
+      }));
+
+      return c.json({ success: true, count: experimentsWithMetrics.length, data: experimentsWithMetrics });
     }
   } catch (error) {
     return c.json({ success: false, error: 'Failed to list experiments',
@@ -364,7 +385,28 @@ app.get('/api/experiments/:id/variants', async (c) => {
     const id = c.req.param('id');
     const experimentManager = new AdExperimentManager(c.env.AD_DATA, c.env.APP_CACHE);
     const variants = await experimentManager.listAdVariantsByExperiment(id);
-    return c.json({ success: true, count: variants.length, data: variants });
+
+    // Add Meta Ad Manager links to each variant
+    const variantsWithLinks = variants.map(variant => {
+      const metaLinks: any = {};
+
+      if (variant.meta_ad_id && !variant.meta_ad_id.startsWith('mock_')) {
+        metaLinks.ad_url = `https://business.facebook.com/adsmanager/manage/ads?act=${c.env.META_AD_ACCOUNT_ID?.replace('act_', '')}&selected_ad_ids=${variant.meta_ad_id}`;
+      }
+      if (variant.meta_campaign_id && !variant.meta_campaign_id.startsWith('mock_')) {
+        metaLinks.campaign_url = `https://business.facebook.com/adsmanager/manage/campaigns?act=${c.env.META_AD_ACCOUNT_ID?.replace('act_', '')}&selected_campaign_ids=${variant.meta_campaign_id}`;
+      }
+      if (variant.meta_adset_id && !variant.meta_adset_id.startsWith('mock_')) {
+        metaLinks.adset_url = `https://business.facebook.com/adsmanager/manage/adsets?act=${c.env.META_AD_ACCOUNT_ID?.replace('act_', '')}&selected_adset_ids=${variant.meta_adset_id}`;
+      }
+
+      return {
+        ...variant,
+        meta_links: Object.keys(metaLinks).length > 0 ? metaLinks : undefined
+      };
+    });
+
+    return c.json({ success: true, count: variantsWithLinks.length, data: variantsWithLinks });
   } catch (error) {
     return c.json({ success: false, error: 'Failed to list variants',
       message: error instanceof Error ? error.message : 'Unknown error' }, 500);
@@ -456,6 +498,106 @@ app.patch('/api/ad-variants/:id', async (c) => {
   } catch (error) {
     return c.json({ success: false, error: 'Failed to update ad variant',
       message: error instanceof Error ? error.message : 'Unknown error' }, 400);
+  }
+});
+
+// ===== OPTIMIZATION ENDPOINTS =====
+
+// Get optimization status for an experiment
+app.get('/api/experiments/:id/optimization/status', async (c) => {
+  try {
+    const experimentId = c.req.param('id');
+    const experimentManager = new AdExperimentManager(c.env.AD_DATA, c.env.APP_CACHE);
+    const metricsService = new MetricsCollectorService(c.env.AD_DATA);
+    const optimizerService = new AdOptimizerService(experimentManager, metricsService);
+
+    const status = await optimizerService.getOptimizationStatus(experimentId);
+    return c.json({ success: true, data: status });
+  } catch (error) {
+    return c.json({
+      success: false,
+      error: 'Failed to get optimization status',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    }, 500);
+  }
+});
+
+// Update optimization config for an experiment
+app.patch('/api/experiments/:id/optimization/config', async (c) => {
+  try {
+    const experimentId = c.req.param('id');
+    const body = await c.req.json();
+    const experimentManager = new AdExperimentManager(c.env.AD_DATA, c.env.APP_CACHE);
+    const metricsService = new MetricsCollectorService(c.env.AD_DATA);
+    const optimizerService = new AdOptimizerService(experimentManager, metricsService);
+
+    await optimizerService.updateOptimizationConfig(experimentId, body);
+
+    return c.json({
+      success: true,
+      message: 'Optimization config updated successfully'
+    });
+  } catch (error) {
+    return c.json({
+      success: false,
+      error: 'Failed to update optimization config',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    }, 400);
+  }
+});
+
+// Trigger manual evaluation for an experiment
+app.post('/api/experiments/:id/optimization/evaluate', async (c) => {
+  try {
+    const experimentId = c.req.param('id');
+    const experimentManager = new AdExperimentManager(c.env.AD_DATA, c.env.APP_CACHE);
+    const metricsService = new MetricsCollectorService(c.env.AD_DATA);
+    const optimizerService = new AdOptimizerService(experimentManager, metricsService);
+
+    const result = await optimizerService.triggerManualEvaluation(experimentId);
+
+    return c.json({
+      success: true,
+      data: result,
+      message: `Evaluation complete: ${result.variants_paused} paused, ${result.variants_launched} launched`
+    });
+  } catch (error) {
+    return c.json({
+      success: false,
+      error: 'Failed to evaluate experiment',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    }, 500);
+  }
+});
+
+// Evaluate all running experiments (background job endpoint)
+app.post('/api/optimization/evaluate-all', async (c) => {
+  try {
+    const experimentManager = new AdExperimentManager(c.env.AD_DATA, c.env.APP_CACHE);
+    const metricsService = new MetricsCollectorService(c.env.AD_DATA);
+    const optimizerService = new AdOptimizerService(experimentManager, metricsService);
+
+    const results = await optimizerService.evaluateAllExperiments();
+
+    const totalPaused = results.reduce((sum, r) => sum + r.variants_paused, 0);
+    const totalLaunched = results.reduce((sum, r) => sum + r.variants_launched, 0);
+
+    return c.json({
+      success: true,
+      data: {
+        experiments_evaluated: results.length,
+        total_variants_paused: totalPaused,
+        total_variants_launched: totalLaunched,
+        results
+      },
+      message: `Evaluated ${results.length} experiments`
+    });
+  } catch (error) {
+    return c.json({
+      success: false,
+      error: 'Failed to evaluate all experiments',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    }, 500);
   }
 });
 
@@ -641,6 +783,90 @@ app.post('/api/ai/run-experiment', async (c) => {
       env: c.env,
     });
 
+    // Save the generated variants to storage and deploy to Meta
+    const savedVariants = [];
+    for (const variant of variants) {
+      const savedVariant = await experimentManager.createAdVariant({
+        experiment_id: experiment.id,
+        product_id: product_id,
+        platform: 'meta',
+        meta_campaign_id: '',
+        meta_adset_id: '',
+        meta_ad_id: '',
+        headline: variant.headline,
+        body: variant.body,
+        image_url: variant.image_url,
+        cta: variant.cta,
+        status: 'draft',
+        created_by: 'agent'
+      });
+      savedVariants.push(savedVariant);
+    }
+
+    // Deploy ads to Meta via Pipeboard (if configured)
+    const metaToken = c.env.PIPEBOARD_API_TOKEN;
+    const metaAdAccountId = c.env.META_AD_ACCOUNT_ID;
+    const metaPageId = c.env.META_PAGE_ID;
+    const deployedAds: any[] = [];
+
+    if (metaToken && metaAdAccountId && metaPageId) {
+      console.log('🚀 Deploying ads to Meta via Pipeboard...');
+      const metaClient = new MetaAdsClient({
+        apiToken: metaToken,
+        adAccountId: metaAdAccountId,
+        pageId: metaPageId,
+        mockMode: false
+      });
+
+      for (const variant of savedVariants) {
+        try {
+          const result = await metaClient.createAd(variant, {
+            dailyBudget: experiment.budget_per_day_usd * 100, // Convert to cents
+            ctaUrl: `https://ads-infinitum.app/landing/${product_id}` // TODO: Get real landing page URL
+          });
+
+          // Update variant with Meta IDs
+          await experimentManager.updateAdVariant({
+            id: variant.id,
+            meta_campaign_id: result.campaignId,
+            meta_adset_id: result.adsetId,
+            meta_ad_id: result.adId,
+            status: 'active'
+          });
+
+          // Generate Meta Ad Manager URLs
+          const accountIdNum = metaAdAccountId.replace('act_', '');
+          const adUrl = `https://business.facebook.com/adsmanager/manage/ads?act=${accountIdNum}&selected_ad_ids=${result.adId}`;
+          const campaignUrl = `https://business.facebook.com/adsmanager/manage/campaigns?act=${accountIdNum}&selected_campaign_ids=${result.campaignId}`;
+          const adsetUrl = `https://business.facebook.com/adsmanager/manage/adsets?act=${accountIdNum}&selected_adset_ids=${result.adsetId}`;
+
+          // Track deployed ad info
+          deployedAds.push({
+            variant_id: variant.id,
+            headline: variant.headline,
+            ad_id: result.adId,
+            campaign_id: result.campaignId,
+            adset_id: result.adsetId,
+            meta_links: {
+              ad_url: adUrl,
+              campaign_url: campaignUrl,
+              adset_url: adsetUrl,
+            }
+          });
+
+          console.log(`✅ Deployed ad ${variant.id} to Meta`);
+          console.log(`   📍 Ad: ${adUrl}`);
+          console.log(`   📍 Campaign: ${campaignUrl}`);
+        } catch (error) {
+          console.error(`❌ Failed to deploy ad ${variant.id}:`, error);
+          // Continue with other ads even if one fails
+        }
+      }
+    } else {
+      console.log('⚠️  Pipeboard credentials not configured - ads saved as drafts');
+      console.log('   Set PIPEBOARD_API_TOKEN, META_AD_ACCOUNT_ID, and META_PAGE_ID in .env');
+    }
+
     // Update experiment status
     await experimentManager.updateExperiment({
       id: experiment.id,
@@ -660,6 +886,10 @@ app.post('/api/ai/run-experiment', async (c) => {
       estimated_cost: 2.5,
       budget_per_day: experiment.budget_per_day_usd,
       target_cpl: experiment.target_cpl_threshold_usd,
+      deployed_ads: deployedAds.length > 0 ? deployedAds : undefined,
+      note: deployedAds.length > 0
+        ? 'Ads deployed to Meta - click the links to view in Ads Manager'
+        : 'Ads created as drafts - configure Meta credentials to deploy',
     });
   } catch (error) {
     console.error('Error running experiment:', error);

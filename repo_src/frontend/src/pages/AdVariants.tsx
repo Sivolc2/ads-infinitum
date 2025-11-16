@@ -224,6 +224,43 @@ export default function AdVariants() {
                   <div className="meta-detail">
                     <strong>Ad ID:</strong> {selectedVariant.meta_ad_id}
                   </div>
+
+                  {/* Meta Ads Manager Links */}
+                  {selectedVariant.meta_links && (
+                    <div className="meta-links">
+                      <strong>🔗 Meta Ads Manager:</strong>
+                      {selectedVariant.meta_links.ad_url && (
+                        <a
+                          href={selectedVariant.meta_links.ad_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="meta-link"
+                        >
+                          📍 View Ad
+                        </a>
+                      )}
+                      {selectedVariant.meta_links.campaign_url && (
+                        <a
+                          href={selectedVariant.meta_links.campaign_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="meta-link"
+                        >
+                          📊 View Campaign
+                        </a>
+                      )}
+                      {selectedVariant.meta_links.adset_url && (
+                        <a
+                          href={selectedVariant.meta_links.adset_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="meta-link"
+                        >
+                          🎯 View Ad Set
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

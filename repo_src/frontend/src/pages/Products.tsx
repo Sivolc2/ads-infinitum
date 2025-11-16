@@ -131,6 +131,26 @@ export default function Products() {
       addLog(`Budget: $${result.budget_per_day}/day`);
       addLog(`Target CPL: $${result.target_cpl}`);
       addLog('');
+
+      // Display Meta ad links if available
+      if (result.deployed_ads && result.deployed_ads.length > 0) {
+        addLog('🔗 Meta Ads Manager Links:');
+        addLog('');
+        result.deployed_ads.forEach((ad: any, index: number) => {
+          addLog(`Ad ${index + 1}: ${ad.headline.substring(0, 50)}...`);
+          if (ad.meta_links?.ad_url) {
+            addLog(`   📍 View Ad: ${ad.meta_links.ad_url}`);
+          }
+          if (ad.meta_links?.campaign_url) {
+            addLog(`   📍 Campaign: ${ad.meta_links.campaign_url}`);
+          }
+          addLog('');
+        });
+      } else if (result.note) {
+        addLog(`ℹ️  ${result.note}`);
+        addLog('');
+      }
+
       addLog('🎉 Experiment started successfully!');
 
       // Reload experiments

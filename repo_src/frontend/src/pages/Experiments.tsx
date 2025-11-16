@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import apiClient from '../services/api';
 import type { ExperimentWithMetrics, ExperimentStatus } from '../types';
+import OptimizationPanel from '../components/OptimizationPanel';
 import '../styles/Experiments.css';
 
 const statusColors: Record<ExperimentStatus, string> = {
@@ -197,6 +198,11 @@ export default function Experiments() {
                     </div>
                   )}
               </div>
+
+              <OptimizationPanel
+                experimentId={experiment.id}
+                isRunning={experiment.status === 'running'}
+              />
 
               <div className="experiment-footer">
                 <Link to={`/ads?experiment=${experiment.id}`} className="btn-secondary">
