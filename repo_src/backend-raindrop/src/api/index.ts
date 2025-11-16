@@ -23,6 +23,7 @@ import { BuildContractService } from '../services/build-contract-service';
 import { generateProductConcept } from '../services/ai-product-generator';
 import { AdOptimizerService } from '../services/ad-optimizer';
 import { MetaAdsClient } from '../services/meta-ads-client';
+import { saveAdVariantsToData } from '../utils/data-tracker';
 
 import {
   ProductConcept,
@@ -55,6 +56,9 @@ interface Env {
   IMAGE_PROVIDER?: string;  // 'freepik' or 'fal' (default: 'freepik')
   FREEPIK_API_KEY?: string;  // For Freepik image generation
   FAL_KEY?: string;  // For fal.ai image generation
+
+  // Ad Generation Configuration
+  NUM_AD_VARIANTS?: string;  // Number of ad variants to generate per experiment (default: 1)
 
   // Track A Raindrop bindings
   AD_DATA: any;  // SmartBucket or SmartSQL
@@ -771,17 +775,27 @@ app.post('/api/ai/run-experiment', async (c) => {
     const imageProvider = (c.env.IMAGE_PROVIDER || 'freepik') as 'freepik' | 'fal';
     const openrouterApiKey = c.env.OPENROUTER_API_KEY;
     const imageApiKey = imageProvider === 'freepik' ? c.env.FREEPIK_API_KEY : c.env.FAL_KEY;
+    const numAdVariants = parseInt(c.env.NUM_AD_VARIANTS || '1');
 
     const variants = await generateAdVariants({
       productConcept: product,
       experimentId: experiment.id,
-      numVariants: 3,
+      numVariants: numAdVariants,
       openrouterApiKey,
       imageApiKey,
       imageProvider,
       raindropAI: useRaindrop ? c.env.AI : undefined,
       env: c.env,
     });
+
+    // Save generated variants to local data/ folder for tracking
+    try {
+      const dataPath = await saveAdVariantsToData(variants, product.title);
+      console.log(`📁 Saved ad variants to: ${dataPath}`);
+    } catch (error) {
+      console.error('⚠️  Failed to save variants to data folder:', error);
+      // Continue even if saving fails
+    }
 
     // Save the generated variants to storage and deploy to Meta
     const savedVariants = [];

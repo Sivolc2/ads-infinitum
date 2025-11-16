@@ -321,8 +321,8 @@ export class MetaAdsClient {
       daily_budget: dailyBudget,
       billing_event: 'IMPRESSIONS',
       optimization_goal: 'LEAD_GENERATION',
-      bid_strategy: 'LOWEST_COST_WITH_BID_CAP',
-      bid_amount: 100, // $1.00 bid cap in cents
+      // Use lowest-cost automatic bidding so Meta doesn't require bid_amount.
+      bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
       start_time: start,
       end_time: end,
       targeting,
